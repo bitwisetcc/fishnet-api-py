@@ -1,0 +1,10 @@
+services:
+  - type: web
+    plan: free
+    name: fishnet-api-py
+    runtime: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python -m gunicorn main:app"
+    envVars:
+      - key: MONGODB_URI
+        sync: false
