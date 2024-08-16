@@ -1,0 +1,27 @@
+[
+    {
+      $addFields: {
+        name: {
+          $regexFind: {
+            input: "$name_species",
+            regex: /^.*(?= \()/
+          }
+        },
+        scientificName: {
+          $regexFind: {
+            input: "$name_species",
+            regex: /[^\(][\w\s]+[\.]+/
+          }
+        }
+      }
+    },
+    {
+      $set: {
+        name: "$name.match",
+        scientificName: "$scientificName.match"
+      }
+    },
+    {
+      $unset: "name_species"
+    }
+]

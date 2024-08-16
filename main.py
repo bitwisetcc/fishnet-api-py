@@ -55,5 +55,12 @@ def delete_item(nome):
         return jsonify({"error": "Item não encontrado"}), 404
 
 
+@app.post("/clientes")
+def register_client():
+    db["customer"].insert_one(request.json)
+    # { is_company, name, email, phone, rg*1, cpf*1, cnpj*2, serial_CC, expiration_CC, backserial_CC, zip_code?, address? }
+    return jsonify({"message": "Cliente registrado com sucesso!"}), 201
+
+
 if __name__ == "__main__":
     app.run(debug=True)

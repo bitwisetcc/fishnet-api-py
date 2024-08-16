@@ -1,0 +1,28 @@
+[
+  {
+    $lookup: {
+      from: "tag_info_parsed",
+      localField: "_id",
+      foreignField: "_id",
+      as: "tags"
+    }
+  },
+  {
+    $set: {
+      tags: {
+        $arrayElemAt: ["$tags", 0]
+      }
+    }
+  },
+  {
+    $set: {
+      tags: "$tags.tags"
+    }
+  },
+  {
+    $out: {
+      db: "FinFusion",
+      coll: "species"
+    }
+  }
+]
