@@ -1,5 +1,6 @@
 from os import environ
 
+from bson import ObjectId
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from pymongo import MongoClient
@@ -16,7 +17,7 @@ collection = db["species"]
 # Rota para obter todos os itens
 @app.get("/itens")
 def get_itens():
-    itens = list(collection.find({}, {"_id": 0}))  # Remove o campo _id da resposta
+    itens = [{**doc, "_id": str(doc["_id"])} for doc in collection.find({})]
     return jsonify(itens)
 
 
@@ -42,24 +43,24 @@ def get_itens_by_query(query):
             },
         )
     ]
-    
+
     return jsonify(itens)
 
 
 # Rota para obter um item específico pelo nome
-@app.get("/itens/<nome>")
-def get_item(nome):
-    item = collection.find_one({"nome": nome}, {"_id": 0})
+@app.get("/itens/<product_id>")
+def get_item(product_id):
+    item = collection.find_one({"_id": ObjectId(product_id)}, {"_id": 0})
     if item:
         return jsonify(item)
     else:
         return jsonify({"error": "Item não encontrado"}), 404
 
 
-# Rota para deletar um item pelo nome
-@app.delete("/itens/<nome>")
-def delete_item(nome):
-    result = collection.delete_one({"nome": nome})
+# Rota para deletar um item pelo id
+@app.delete("/itens/<product_id>")
+def delete_item(product_id):
+    result = collection.delete_one({"_id": ObjectId(product_id)})
     if result.deleted_count > 0:
         return jsonify({"message": "Item deletado com sucesso!"})
     else:
