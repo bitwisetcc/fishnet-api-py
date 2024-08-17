@@ -28,10 +28,21 @@ def add_item():
     return jsonify({"message": "Item adicionado com sucesso!"}), 201
 
 
-# Buscar itens por nome e nome científico
+# Buscar itens por nome, nome científico ou tag
 @app.get("/itens/busca/<query>")
 def get_itens_by_query(query):
-    itens = list(collection.find({"name_species": {"$regex": query}}, {"_id": 0}))
+    itens = [
+        {**doc, "_id": str(doc["_id"])}
+        for doc in collection.find(
+            {
+                "$or": [
+                    {field: {"$regex": query}}
+                    for field in ["name", "scientificName", "tags"]
+                ]
+            },
+        )
+    ]
+    
     return jsonify(itens)
 
 
