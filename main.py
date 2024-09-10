@@ -1,21 +1,28 @@
 from os import environ
 
+import bcrypt
 from bson import ObjectId
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, make_response, request
 from flask_cors import CORS, cross_origin
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
+
+from lib.auth import UserNotFound, encode_auth_token, find_user_by_email
 
 load_dotenv()
 app = Flask(__name__)
 cors = CORS(app)
 app.config["CORS_HEADERS"] = "Content-Type"
+app.config["SECRET_KEY"] = environ.get("SECRET_KEY", ":^)")
+
+# app.register_blueprint(auth.auth, url_prefix="/auth")
 
 client = MongoClient(environ.get("MONGODB_URI"), server_api=ServerApi("1"))
 db = client["FinFusion"]
 species = db["species"]
-customer = db["customer"]
+customers = db["customer"]
+employees = db["employees"]
 
 
 # Rota para obter todos os itens
@@ -80,24 +87,26 @@ def delete_item(product_id):
 @app.get("/itens/filtro")
 @cross_origin()
 def get_itens_by_filter():
-    query = request.args.get('query', '')
-    tags = request.args.get('tags')
-    lancamento = request.args.get('lancamento')
-    ordem_alfabetica = request.args.get('ordemAlfabetica')
-    habitat = request.args.get('habitat')
-    dieta = request.args.get('dieta')
-    ofertas = request.args.get('ofertas')
+    query = request.args.get("query", "")
+    tags = request.args.get("tags")
+    lancamento = request.args.get("lancamento")
+    ordem_alfabetica = request.args.get("ordemAlfabetica")
+    habitat = request.args.get("habitat")
+    dieta = request.args.get("dieta")
+    ofertas = request.args.get("ofertas")
 
     filter_conditions = []
 
     if query:
         filter_conditions.append(
-            {"$or": [
-                {"name": {"$regex": query, "$options": "i"}},
-                {"scientificName": {"$regex": query, "$options": "i"}},
-            ]}
+            {
+                "$or": [
+                    {"name": {"$regex": query, "$options": "i"}},
+                    {"scientificName": {"$regex": query, "$options": "i"}},
+                ]
+            }
         )
-    
+
     if tags:
         filter_conditions.append({"tags": {"$regex": tags, "$options": "i"}})
 
@@ -115,7 +124,11 @@ def get_itens_by_filter():
 
     # Se houver condições, aplica o filtro; caso contrário, retorna todos os itens
     if filter_conditions:
-        final_filter = {"$and": filter_conditions} if len(filter_conditions) > 1 else filter_conditions[0]
+        final_filter = (
+            {"$and": filter_conditions}
+            if len(filter_conditions) > 1
+            else filter_conditions[0]
+        )
     else:
         final_filter = {}
 
@@ -133,10 +146,7 @@ def get_itens_by_filter():
             for doc in species.find(final_filter).sort(sort_criteria)
         ]
     else:
-        itens = [
-            {**doc, "_id": str(doc["_id"])}
-            for doc in species.find(final_filter)
-        ]
+        itens = [{**doc, "_id": str(doc["_id"])} for doc in species.find(final_filter)]
 
     return jsonify(itens)
 
@@ -144,9 +154,41 @@ def get_itens_by_filter():
 @app.post("/clientes")
 @cross_origin()
 def register_client():
-    customer.insert_one(request.json)
+    customers.insert_one(request.json)
     # { is_company, name, email, phone, rg*1, cpf*1, cnpj*2, serial_CC, expiration_CC, backserial_CC, zip_code?, address? }
     return jsonify({"message": "Cliente registrado com sucesso!"}), 201
+
+
+@app.post("/auth/login")
+def login():
+    post_data = request.get_json()
+    try:
+        user = find_user_by_email(post_data.get("email"))
+        # if bcrypt.check_password_hash(user["password"], post_data.get("password")):
+        if bcrypt.checkpw(
+            user["password"], bytes(post_data.get("password"), "utf-8")
+        ):
+            auth_token = encode_auth_token(user.id, app.config.get("SECRET_KEY"))
+
+        if auth_token:
+            responseObject = {
+                "status": "success",
+                "message": "Successfully logged in.",
+                "auth_token": auth_token.decode(),
+            }
+            return make_response(jsonify(responseObject)), 200
+    except UserNotFound:
+        responseObject = {"status": "fail", "message": "User does not exist."}
+        return make_response(jsonify(responseObject)), 404
+    except ValueError as e:
+        print(e.args)
+        responseObject = {
+            "status": "fail",
+            "message": "Invalid salt.",
+            "input": post_data.get("password"),
+            "stored": user["password"].decode(),
+        }
+        return make_response(jsonify(responseObject)), 401
 
 
 if __name__ == "__main__":
