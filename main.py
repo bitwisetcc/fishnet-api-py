@@ -77,24 +77,24 @@ def delete_item(product_id):
 
 
 # Rota de filtros durante a busca
-@app.get("/itens/filtro")
+@app.get("/itens/filtros")
 @cross_origin()
 def get_itens_by_filter():
-    query = request.args.get('query', '')
+    name = request.args.get('name', '')
     tags = request.args.get('tags')
     lancamento = request.args.get('lancamento')
     ordem_alfabetica = request.args.get('ordemAlfabetica')
     habitat = request.args.get('habitat')
-    dieta = request.args.get('dieta')
+    feeding = request.args.get('feeding')
     ofertas = request.args.get('ofertas')
 
     filter_conditions = []
 
-    if query:
+    if name:
         filter_conditions.append(
             {"$or": [
-                {"name": {"$regex": query, "$options": "i"}},
-                {"scientificName": {"$regex": query, "$options": "i"}},
+                {"name": {"$regex": name, "$options": "i"}},
+                {"scientificName": {"$regex": name, "$options": "i"}},
             ]}
         )
     
@@ -107,8 +107,8 @@ def get_itens_by_filter():
     if habitat:
         filter_conditions.append({"habitat": {"$regex": habitat, "$options": "i"}})
 
-    if dieta:
-        filter_conditions.append({"dieta": {"$regex": dieta, "$options": "i"}})
+    if feeding:
+        filter_conditions.append({"feeding": {"$regex": feeding, "$options": "i"}})
 
     if ofertas:
         filter_conditions.append({"ofertas": True})
