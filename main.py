@@ -76,7 +76,6 @@ def delete_item(product_id):
         return jsonify({"error": "Item não encontrado"}), 404
 
 
-# Rota de filtros durante a busca
 @app.get("/itens/filtros")
 @cross_origin()
 def get_itens_by_filter():
@@ -87,6 +86,12 @@ def get_itens_by_filter():
     habitat = request.args.get('habitat')
     feeding = request.args.get('feeding')
     ofertas = request.args.get('ofertas')
+    min_price = request.args.get('minPrice')
+    max_price = request.args.get('maxPrice')
+    min_size = request.args.get('minSize')
+    max_size = request.args.get('maxSize')
+    behavior = request.args.get('behavior')
+    ecosystem = request.args.get('ecosystem')
 
     filter_conditions = []
 
@@ -97,7 +102,7 @@ def get_itens_by_filter():
                 {"scientificName": {"$regex": name, "$options": "i"}},
             ]}
         )
-    
+
     if tags:
         filter_conditions.append({"tags": {"$regex": tags, "$options": "i"}})
 
@@ -110,23 +115,45 @@ def get_itens_by_filter():
     if feeding:
         filter_conditions.append({"feeding": {"$regex": feeding, "$options": "i"}})
 
+    if behavior:
+        filter_conditions.append({"social_behavior": {"$regex": behavior, "$options": "i"}})
+
+    if ecosystem:
+        filter_conditions.append({"ecosystem": {"$regex": ecosystem, "$options": "i"}})
+
     if ofertas:
         filter_conditions.append({"ofertas": True})
 
-    # Se houver condições, aplica o filtro; caso contrário, retorna todos os itens
+    if min_price or max_price:
+        price_filter = {}
+        if min_price:
+            price_filter["$gte"] = float(min_price.replace('$', '').strip())
+        if max_price:
+            price_filter["$lte"] = float(max_price.replace('$', '').strip())
+        filter_conditions.append({"price": price_filter})
+
+    if min_size or max_size:
+        size_filter = {}
+        if min_size:
+            size_filter["$gte"] = float(min_size)
+        if max_size:
+            size_filter["$lte"] = float(max_size)
+        filter_conditions.append({"size": size_filter})
+
+    
     if filter_conditions:
         final_filter = {"$and": filter_conditions} if len(filter_conditions) > 1 else filter_conditions[0]
     else:
         final_filter = {}
 
-    # Aplicação de ordenação, se necessário
+    
     sort_criteria = None
     if ordem_alfabetica == "A-Z":
         sort_criteria = [("name", 1)]  # Ordena de A-Z
     elif ordem_alfabetica == "Z-A":
         sort_criteria = [("name", -1)]  # Ordena de Z-A
 
-    # Consulta ao banco de dados
+   
     if sort_criteria:
         itens = [
             {**doc, "_id": str(doc["_id"])}
