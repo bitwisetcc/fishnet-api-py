@@ -1,28 +1,24 @@
 from os import environ
 
-import bcrypt
 from bson import ObjectId
 from dotenv import load_dotenv
-from flask import Flask, jsonify, make_response, request
+from flask import Flask, jsonify, request
 from flask_cors import CORS, cross_origin
-from pymongo import MongoClient
-from pymongo.server_api import ServerApi
 
-from lib.auth import UserNotFound, encode_auth_token, find_user_by_email
+from auth.views import auth
+from connections import db
+
+species = db["species"]
+customers = db["customers"]
 
 load_dotenv()
+
 app = Flask(__name__)
 cors = CORS(app)
 app.config["CORS_HEADERS"] = "Content-Type"
 app.config["SECRET_KEY"] = environ.get("SECRET_KEY", ":^)")
 
-# app.register_blueprint(auth.auth, url_prefix="/auth")
-
-client = MongoClient(environ.get("MONGODB_URI"), server_api=ServerApi("1"))
-db = client["FinFusion"]
-species = db["species"]
-customers = db["customer"]
-employees = db["employees"]
+app.register_blueprint(auth, url_prefix="/auth")
 
 
 # Rota para obter todos os itens
@@ -157,38 +153,6 @@ def register_client():
     customers.insert_one(request.json)
     # { is_company, name, email, phone, rg*1, cpf*1, cnpj*2, serial_CC, expiration_CC, backserial_CC, zip_code?, address? }
     return jsonify({"message": "Cliente registrado com sucesso!"}), 201
-
-
-@app.post("/auth/login")
-def login():
-    post_data = request.get_json()
-    try:
-        user = find_user_by_email(post_data.get("email"))
-        # if bcrypt.check_password_hash(user["password"], post_data.get("password")):
-        if bcrypt.checkpw(
-            user["password"], bytes(post_data.get("password"), "utf-8")
-        ):
-            auth_token = encode_auth_token(user.id, app.config.get("SECRET_KEY"))
-
-        if auth_token:
-            responseObject = {
-                "status": "success",
-                "message": "Successfully logged in.",
-                "auth_token": auth_token.decode(),
-            }
-            return make_response(jsonify(responseObject)), 200
-    except UserNotFound:
-        responseObject = {"status": "fail", "message": "User does not exist."}
-        return make_response(jsonify(responseObject)), 404
-    except ValueError as e:
-        print(e.args)
-        responseObject = {
-            "status": "fail",
-            "message": "Invalid salt.",
-            "input": post_data.get("password"),
-            "stored": user["password"].decode(),
-        }
-        return make_response(jsonify(responseObject)), 401
 
 
 if __name__ == "__main__":
