@@ -4,18 +4,21 @@ from bson import ObjectId
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS, cross_origin
-from pymongo import MongoClient
-from pymongo.server_api import ServerApi
+
+from auth.views import auth
+from connections import db
+
+species = db["species"]
+customers = db["customers"]
 
 load_dotenv()
+
 app = Flask(__name__)
 cors = CORS(app)
 app.config["CORS_HEADERS"] = "Content-Type"
+app.config["SECRET_KEY"] = environ.get("SECRET_KEY", ":^)")
 
-client = MongoClient(environ.get("MONGODB_URI"), server_api=ServerApi("1"))
-db = client["FinFusion"]
-species = db["species"]
-customer = db["customer"]
+app.register_blueprint(auth, url_prefix="/auth")
 
 
 # Rota para obter todos os itens
@@ -103,6 +106,7 @@ def get_itens_by_filter():
             ]}
         )
 
+
     if tags:
         filter_conditions.append({"tags": {"$regex": tags, "$options": "i"}})
 
@@ -142,7 +146,11 @@ def get_itens_by_filter():
 
     
     if filter_conditions:
-        final_filter = {"$and": filter_conditions} if len(filter_conditions) > 1 else filter_conditions[0]
+        final_filter = (
+            {"$and": filter_conditions}
+            if len(filter_conditions) > 1
+            else filter_conditions[0]
+        )
     else:
         final_filter = {}
 
@@ -160,10 +168,7 @@ def get_itens_by_filter():
             for doc in species.find(final_filter).sort(sort_criteria)
         ]
     else:
-        itens = [
-            {**doc, "_id": str(doc["_id"])}
-            for doc in species.find(final_filter)
-        ]
+        itens = [{**doc, "_id": str(doc["_id"])} for doc in species.find(final_filter)]
 
     return jsonify(itens)
 
@@ -171,7 +176,7 @@ def get_itens_by_filter():
 @app.post("/clientes")
 @cross_origin()
 def register_client():
-    customer.insert_one(request.json)
+    customers.insert_one(request.json)
     # { is_company, name, email, phone, rg*1, cpf*1, cnpj*2, serial_CC, expiration_CC, backserial_CC, zip_code?, address? }
     return jsonify({"message": "Cliente registrado com sucesso!"}), 201
 
