@@ -18,7 +18,7 @@ def register():
         return jsonify({"message": "Usuário já cadastrado."}), 409
 
     hashed_password = bcrypt.hashpw(
-        bytes(post_data.get("password"), "utf-8"), bcrypt.gensalt()
+        post_data.get("password").encode(), bcrypt.gensalt()
     )
 
     role = post_data.get("role")
@@ -69,3 +69,24 @@ def login():
         return jsonify({"token": auth_token}), 200
     else:
         return jsonify({"message": "Login inválido."}), 404
+
+
+@auth.get("/check")
+@cross_origin()
+def me():
+    auth_header = request.headers.get("Authorization")
+    if auth_header is None:
+        return jsonify({"message": "Token não fornecido."}), 400
+
+    try:
+        payload = jwt.decode(
+            auth_header.encode(), current_app.config["SECRET_KEY"], algorithms=["HS256"]
+        )
+    except Exception as e:
+        print(e.args)
+        return jsonify({"message": "Token inválido."}), 400
+
+    if users.find_one({"_id": payload["sub"]}) is None:
+        return jsonify({"message": "Usuário não encontrado."}), 404
+
+    return jsonify({"message": "Verificação completa."}), 200
