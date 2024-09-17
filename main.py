@@ -7,6 +7,7 @@ from flask_cors import CORS, cross_origin
 
 from auth.views import auth
 from connections import db
+from crud.views import crud
 
 species = db["species"]
 customers = db["customers"]
@@ -19,6 +20,7 @@ app.config["CORS_HEADERS"] = "Content-Type"
 app.config["SECRET_KEY"] = environ.get("SECRET_KEY", ":^)")
 
 app.register_blueprint(auth, url_prefix="/auth")
+app.register_blueprint(crud, url_prefix="/crud")
 
 
 # Rota para obter todos os itens
