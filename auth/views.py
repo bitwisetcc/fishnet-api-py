@@ -1,4 +1,5 @@
 import bcrypt
+from bson import ObjectId
 from flask import current_app, Blueprint, jsonify, request
 from flask_cors import cross_origin
 import jwt
@@ -67,8 +68,8 @@ def login():
 
         auth_token = jwt.encode(payload, current_app.config["SECRET_KEY"])
         return jsonify({"token": auth_token}), 200
-    else:
-        return jsonify({"message": "Login inválido."}), 404
+
+    return jsonify({"message": "Login inválido."}), 404
 
 
 @auth.get("/check")
@@ -86,7 +87,7 @@ def me():
         print(e.args)
         return jsonify({"message": "Token inválido."}), 400
 
-    if users.find_one({"_id": payload["sub"]}) is None:
-        return jsonify({"message": "Usuário não encontrado."}), 404
+    if users.find_one({"_id": ObjectId(payload["sub"])}) is None:
+        return jsonify({"message": "Usuário não encontrado.", "res": payload}), 404
 
     return jsonify({"message": "Verificação completa."}), 200
