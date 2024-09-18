@@ -7,8 +7,8 @@ from connections import db
 collection = db["users"]
 users = Blueprint("users", __name__)
 
-# [POST] /users is not here because it is implemented in auth/views.py as /auth/register
-
+# [POST] /users is implemented as /auth/register
+# { is_company, name, email, phone, rg*1, cpf*1, cnpj*2, serial_CC, expiration_CC, backserial_CC, zip_code?, address? }
 
 def to_dict(item):
     return {**item, "_id": str(item["_id"]), "password": item["password"].decode()}
