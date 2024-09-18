@@ -91,3 +91,20 @@ def me():
         return jsonify({"message": "Usuário não encontrado.", "res": payload}), 404
 
     return jsonify({"message": "Verificação completa."}), 200
+
+
+# @auth.post("/reset-psasword")
+# @cross_origin()
+# def reset_password():
+#     post_data = request.get_json()
+#     user = users.find_one({"email": post_data.get("email")})
+
+#     if user is None:
+#         return jsonify({"message": "Usuário não encontrado."}), 404
+
+#     hashed_password = bcrypt.hashpw(
+#         post_data.get("password").encode(), bcrypt.gensalt()
+#     )
+
+#     users.update_one({"email": post_data.get("email")}, {"$set": {"password": hashed_password}})
+#     return jsonify({"message": "Senha alterada com sucesso."}), 200

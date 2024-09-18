@@ -5,9 +5,10 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS, cross_origin
 
-from auth.views import auth
 from connections import db
+from auth.views import auth
 from crud.views import crud
+from user.views import users
 
 species = db["species"]
 customers = db["customers"]
@@ -20,6 +21,7 @@ app.config["CORS_HEADERS"] = "Content-Type"
 app.config["SECRET_KEY"] = environ.get("SECRET_KEY", ":^)")
 
 app.register_blueprint(auth, url_prefix="/auth")
+app.register_blueprint(users, url_prefix="/users")
 app.register_blueprint(crud, url_prefix="/crud")
 
 
@@ -84,30 +86,31 @@ def delete_item(product_id):
 @app.get("/itens/filtros")
 @cross_origin()
 def get_itens_by_filter():
-    name = request.args.get('name', '')
-    tags = request.args.get('tags')
-    lancamento = request.args.get('lancamento')
-    ordem_alfabetica = request.args.get('ordemAlfabetica')
-    habitat = request.args.get('habitat')
-    feeding = request.args.get('feeding')
-    ofertas = request.args.get('ofertas')
-    min_price = request.args.get('minPrice')
-    max_price = request.args.get('maxPrice')
-    min_size = request.args.get('minSize')
-    max_size = request.args.get('maxSize')
-    behavior = request.args.get('behavior')
-    ecosystem = request.args.get('ecosystem')
+    name = request.args.get("name", "")
+    tags = request.args.get("tags")
+    lancamento = request.args.get("lancamento")
+    ordem_alfabetica = request.args.get("ordemAlfabetica")
+    habitat = request.args.get("habitat")
+    feeding = request.args.get("feeding")
+    ofertas = request.args.get("ofertas")
+    min_price = request.args.get("minPrice")
+    max_price = request.args.get("maxPrice")
+    min_size = request.args.get("minSize")
+    max_size = request.args.get("maxSize")
+    behavior = request.args.get("behavior")
+    ecosystem = request.args.get("ecosystem")
 
     filter_conditions = []
 
     if name:
         filter_conditions.append(
-            {"$or": [
-                {"name": {"$regex": name, "$options": "i"}},
-                {"scientificName": {"$regex": name, "$options": "i"}},
-            ]}
+            {
+                "$or": [
+                    {"name": {"$regex": name, "$options": "i"}},
+                    {"scientificName": {"$regex": name, "$options": "i"}},
+                ]
+            }
         )
-
 
     if tags:
         filter_conditions.append({"tags": {"$regex": tags, "$options": "i"}})
@@ -122,7 +125,9 @@ def get_itens_by_filter():
         filter_conditions.append({"feeding": {"$regex": feeding, "$options": "i"}})
 
     if behavior:
-        filter_conditions.append({"social_behavior": {"$regex": behavior, "$options": "i"}})
+        filter_conditions.append(
+            {"social_behavior": {"$regex": behavior, "$options": "i"}}
+        )
 
     if ecosystem:
         filter_conditions.append({"ecosystem": {"$regex": ecosystem, "$options": "i"}})
@@ -133,9 +138,9 @@ def get_itens_by_filter():
     if min_price or max_price:
         price_filter = {}
         if min_price:
-            price_filter["$gte"] = float(min_price.replace('$', '').strip())
+            price_filter["$gte"] = float(min_price.replace("$", "").strip())
         if max_price:
-            price_filter["$lte"] = float(max_price.replace('$', '').strip())
+            price_filter["$lte"] = float(max_price.replace("$", "").strip())
         filter_conditions.append({"price": price_filter})
 
     if min_size or max_size:
@@ -146,7 +151,6 @@ def get_itens_by_filter():
             size_filter["$lte"] = float(max_size)
         filter_conditions.append({"size": size_filter})
 
-    
     if filter_conditions:
         final_filter = (
             {"$and": filter_conditions}
@@ -156,14 +160,12 @@ def get_itens_by_filter():
     else:
         final_filter = {}
 
-    
     sort_criteria = None
     if ordem_alfabetica == "A-Z":
         sort_criteria = [("name", 1)]  # Ordena de A-Z
     elif ordem_alfabetica == "Z-A":
         sort_criteria = [("name", -1)]  # Ordena de Z-A
 
-   
     if sort_criteria:
         itens = [
             {**doc, "_id": str(doc["_id"])}
