@@ -170,9 +170,9 @@ def get_itens_by_filter():
     if sort_criteria:
         itens = [
             {**doc, "_id": str(doc["_id"])}
-            for doc in species.find(final_filter).sort(sort_criteria)
+            for doc in collection.find(final_filter).sort(sort_criteria)
         ]
     else:
-        itens = [{**doc, "_id": str(doc["_id"])} for doc in species.find(final_filter)]
+        itens = [{**doc, "_id": str(doc["_id"])} for doc in collection.find(final_filter)]
 
     return jsonify(itens)
