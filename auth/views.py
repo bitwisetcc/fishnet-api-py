@@ -87,10 +87,22 @@ def me():
         print(e.args)
         return jsonify({"message": "Token inválido."}), 400
 
-    if users.find_one({"_id": ObjectId(payload["sub"])}) is None:
+    user = users.find_one({"_id": ObjectId(payload["sub"])})
+    if user is None:
         return jsonify({"message": "Usuário não encontrado.", "res": payload}), 404
 
-    return jsonify({"message": "Verificação completa."}), 200
+    return (
+        jsonify(
+            {
+                "name": user["name"],
+                "email": user["email"],
+                "picture": user.get(
+                    "picture", "https://avatars.githubusercontent.com/u/8683378"
+                ),
+            }
+        ),
+        200,
+    )
 
 
 # @auth.post("/reset-psasword")
