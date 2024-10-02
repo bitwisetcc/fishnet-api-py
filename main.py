@@ -22,6 +22,7 @@ app.config["SECRET_KEY"] = environ.get("SECRET_KEY", ":^)")
 app.register_blueprint(auth, url_prefix="/auth")
 app.register_blueprint(users, url_prefix="/users")
 app.register_blueprint(products, url_prefix="/prods")
+app.register_blueprint(products, url_prefix="/sales")
 
 @app.get("/")
 def home():
