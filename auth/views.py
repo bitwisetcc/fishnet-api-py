@@ -15,6 +15,9 @@ users = db["users"]
 def register():
     post_data = request.get_json()
 
+    if not all([post_data.get("name"), post_data.get("email"), post_data.get("password")]):
+        return jsonify({"message": "Dados inválidos."}), 415
+
     if users.find_one({"email": post_data.get("email")}) is not None:
         return jsonify({"message": "Usuário já cadastrado."}), 409
 
