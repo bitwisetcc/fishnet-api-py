@@ -9,7 +9,7 @@ from flask_cors import cross_origin
 from connections import db
 
 auth = Blueprint("auth", __name__)
-users = db["users"]
+collection = db["users"]
 
 
 def login_required(f):
@@ -30,7 +30,7 @@ def login_required(f):
             print(e.args)
             return jsonify({"message": "Token inválido."}), 400
 
-        user = users.find_one({"_id": ObjectId(payload["sub"])})
+        user = collection.find_one({"_id": ObjectId(payload["sub"])})
         if user is None:
             return jsonify({"message": "Usuário não encontrado.", "res": payload}), 404
 
@@ -44,12 +44,14 @@ def login_required(f):
 def register():
     post_data = request.get_json()
 
-    if not all(
-        [post_data.get("name"), post_data.get("email"), post_data.get("password")]
-    ):
-        return jsonify({"message": "Dados inválidos."}), 415
+    optional_fields = ["picture", "tel", "state"]
+    required_fields = ["name", "email", "password", "addr", "city", "role"]
+    cpf, cnpj = post_data.get("cpf"), post_data.get("cnpj")
 
-    if users.find_one({"email": post_data.get("email")}) is not None:
+    if not all(post_data.get(f) for f in required_fields) or not any([cpf, cnpj]):
+        return jsonify({"message": "Dados inválidos."}), 400
+
+    if collection.find_one({"email": post_data.get("email")}) is not None:
         return jsonify({"message": "Usuário já cadastrado."}), 409
 
     hashed_password = bcrypt.hashpw(
@@ -63,11 +65,22 @@ def register():
     user = {
         "name": post_data.get("name"),
         "email": post_data.get("email"),
+        "addr": post_data.get("addr"),
+        "city": post_data.get("city"),
         "role": role,
         "password": hashed_password,
     }
 
-    user_id = users.insert_one(user).inserted_id
+    if cpf:
+        user["cpf"] = cpf
+    elif cnpj:
+        user["cnpj"] = cnpj # TODO: prevent both CPF and CNPJ
+    
+    for k in optional_fields:
+        if v := post_data.get(k):
+            user[k] = v
+
+    user_id = collection.insert_one(user).inserted_id
 
     payload = {
         "sub": str(user_id),
@@ -89,9 +102,9 @@ def register():
 def login():
     post_data = request.get_json()
     if post_data.get("email") is None or post_data.get("password") is None:
-        return jsonify({"message": "Dados inválidos."}), 415
+        return jsonify({"message": "Dados inválidos."}), 400
 
-    user = users.find_one({"email": post_data.get("email")})
+    user = collection.find_one({"email": post_data.get("email")})
 
     if user is None:
         return jsonify({"message": "Login inválido."}), 404
@@ -124,7 +137,7 @@ def me():
         print(e.args)
         return jsonify({"message": "Token inválido."}), 400
 
-    user = users.find_one({"_id": ObjectId(payload["sub"])})
+    user = collection.find_one({"_id": ObjectId(payload["sub"])})
     if user is None:
         return jsonify({"message": "Usuário não encontrado.", "res": payload}), 404
 
@@ -147,18 +160,20 @@ def me():
 @cross_origin()
 def change_password(payload):
     post_data = request.get_json()
-    # user = users.find_one({"_id": ObjectId(post_data.get("id"))})
-    user = users.find_one({"_id": ObjectId(payload["sub"])})
+    user = collection.find_one({"_id": ObjectId(payload["sub"])})
 
     if user is None:
         return jsonify({"message": "Usuário não encontrado."}), 404
+
+    if not all([post_data.get("old_password"), post_data.get("new_password")]):
+        return jsonify({"message": "Missing fields: old_password, new_password"}), 400
 
     if bcrypt.checkpw(post_data.get("old_password").encode(), user["password"]):
         hashed_password = bcrypt.hashpw(
             post_data.get("new_password").encode(), bcrypt.gensalt()
         )
 
-        users.update_one(
+        collection.update_one(
             {"_id": ObjectId(payload["sub"])},
             {"$set": {"password": hashed_password}},
         )
