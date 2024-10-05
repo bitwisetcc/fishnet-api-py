@@ -117,7 +117,7 @@ def login():
         }
 
         auth_token = jwt.encode(payload, current_app.config["SECRET_KEY"])
-        return jsonify({"token": auth_token}), 200
+        return jsonify({"token": auth_token, "role": user["role"]}), 200
 
     return jsonify({"message": "Login inválido."}), 404
 
@@ -146,6 +146,7 @@ def me():
             {
                 "name": user["name"],
                 "email": user["email"],
+                "role": user["role"],
                 "picture": user.get(
                     "picture", "https://avatars.githubusercontent.com/u/8683378"
                 ),
