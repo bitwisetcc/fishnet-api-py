@@ -86,3 +86,20 @@ def get_user_profile(payload):
     except Exception as e:
         print(e.args)
         return jsonify(e.args), 500
+
+
+@users.put("/me")
+@login_required
+def update_user_profile(payload):
+    body = dict(request.get_json())
+
+    blocked_fields = ["email", "name", "_id", "password"]
+    filtered = [f for f in blocked_fields if body.get(f, None)]
+    if filtered:
+        return jsonify({ "message": f"Tried to edit blocked fields: {", ".join(filtered)}"  })
+    
+    res = collection.update_one({ "_id": ObjectId(payload["sub"]) }, { "$set": body })
+    if not res.acknowledged:
+        return jsonify({ "message": "Database failed to write data" }), 500
+
+    return jsonify({ "message": "Object saved successfully" }), 200

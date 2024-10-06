@@ -72,8 +72,8 @@ def register():
     if cpf:
         user["cpf"] = cpf
     elif cnpj:
-        user["cnpj"] = cnpj # TODO: prevent both CPF and CNPJ
-    
+        user["cnpj"] = cnpj  # TODO: prevent both CPF and CNPJ
+
     for k in optional_fields:
         if v := post_data.get(k):
             user[k] = v
