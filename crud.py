@@ -16,7 +16,7 @@ db = client['FinFusion']
 # Coleções
 species_collection = db['teste_species']
 customer_collection = db['customer']
-employee_collection = db['employee']
+employee_collection = db['users']
 
 # Modelos de Dados
 class SpeciesModel(BaseModel):
