@@ -4,18 +4,15 @@ from dotenv import load_dotenv
 from flask import Flask
 from flask_cors import CORS
 
-from connections import db
 from auth.views import auth
 from products.views import products
 from user.views import users
 
-species = db["species"]
-customers = db["customers"]
-
 load_dotenv()
 
 app = Flask(__name__)
-cors = CORS(app)
+CORS(app)
+
 app.config["CORS_HEADERS"] = "Content-Type"
 app.config["SECRET_KEY"] = environ.get("SECRET_KEY", ":^)")
 

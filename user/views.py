@@ -1,7 +1,6 @@
 from typing import Any
 from bson import ObjectId
 from flask import Blueprint, jsonify, request
-from flask_cors import cross_origin
 from flask_pydantic import validate
 
 from auth.views import login_required
@@ -78,7 +77,6 @@ def delete_user(id):
 
 @users.get("/me")
 @login_required
-@cross_origin()
 def get_user_profile(payload):
     try:
         user = collection.find_one({ "email": payload["email"] })

@@ -4,7 +4,6 @@ import bcrypt
 import jwt
 from bson import ObjectId
 from flask import Blueprint, current_app, jsonify, request
-from flask_cors import cross_origin
 
 from connections import db
 
@@ -40,7 +39,6 @@ def login_required(f):
 
 
 @auth.post("/register")
-@cross_origin()
 def register():
     post_data = request.get_json()
 
@@ -98,7 +96,6 @@ def register():
 
 
 @auth.post("/login")
-@cross_origin()
 def login():
     post_data = request.get_json()
     if post_data.get("email") is None or post_data.get("password") is None:
@@ -123,7 +120,6 @@ def login():
 
 
 @auth.get("/check")
-@cross_origin()
 def me():
     auth_header = request.headers.get("Authorization")
     if auth_header is None:
@@ -158,7 +154,6 @@ def me():
 
 @auth.post("/password")
 @login_required
-@cross_origin()
 def change_password(payload):
     post_data = request.get_json()
     user = collection.find_one({"_id": ObjectId(payload["sub"])})
