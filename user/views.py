@@ -96,7 +96,7 @@ def update_user_profile(payload):
     blocked_fields = ["email", "name", "_id", "password"]
     filtered = [f for f in blocked_fields if body.get(f, None)]
     if filtered:
-        return jsonify({ "message": f"Tried to edit blocked fields: {", ".join(filtered)}"  })
+        return jsonify({ "message": f"Tried to edit blocked fields: {', '.join(filtered)}"  })
     
     res = collection.update_one({ "_id": ObjectId(payload["sub"]) }, { "$set": body })
     if not res.acknowledged:
