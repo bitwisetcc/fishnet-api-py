@@ -15,7 +15,7 @@ def to_dict(item):
     return {
         **item,
         "_id": str(item["_id"]),
-        "price": item["price"].to_decimal(),
+        "price": float(item["price"].to_decimal()),
     }
 
 
@@ -165,6 +165,6 @@ def get_itens_by_filter():
             for doc in collection.find(final_filter).sort(sort_criteria)
         ]
     else:
-        itens = [{**doc, "_id": str(doc["_id"])} for doc in collection.find(final_filter)]
+        itens = [to_dict(doc) for doc in collection.find(final_filter)]
 
     return jsonify(itens)
