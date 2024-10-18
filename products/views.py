@@ -20,7 +20,7 @@ def to_dict(item):
 
 
 @products.post("/")
-@validate()
+# @validate()
 def create_species():
     species = request.json
     result = collection.insert_one(species)

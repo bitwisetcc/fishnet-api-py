@@ -6,10 +6,11 @@ from connections import db
 dashboard = Blueprint("dashboard", __name__)
 
 # Coleções
-order_collection = db['order']
+order_collection = db["order"]
+
 
 # Rota para relatório mensal
-@dashboard.route('/order', methods=['GET'])
+@dashboard.route("/order", methods=["GET"])
 def order():
     hoje = datetime.now()
     primeiro_dia_do_mes = hoje.replace(day=1)
@@ -17,27 +18,31 @@ def order():
     primeiro_dia_ultimo_mes = ultimo_mes.replace(day=1)
 
     # Vendas do mês atual
-    vendas_do_mes = list(order_collection.find({
-        "date": {"$gte": primeiro_dia_do_mes}
-    }))
-    total_vendas = sum(order['order_total'] for order in vendas_do_mes)
+    vendas_do_mes = list(order_collection.find({"date": {"$gte": primeiro_dia_do_mes}}))
+    total_vendas = sum(order["order_total"] for order in vendas_do_mes)
+
+    print(total_vendas, vendas_do_mes)
 
     # Clientes atingidos (clientes que fizeram pedidos este mês)
-    clientes_atingidos = set(order['id_costumer'] for order in vendas_do_mes)
+    clientes_atingidos = set(order["id_costumer"] for order in vendas_do_mes)
 
     # Compras realizadas (total de pedidos)
     total_compras = len(vendas_do_mes)
 
     # Vendas do mês anterior
-    vendas_ultimo_mes = list(order_collection.find({
-        "date": {"$gte": primeiro_dia_ultimo_mes, "$lt": primeiro_dia_do_mes}
-    }))
-    total_vendas_ultimo_mes = sum(order['order_total'] for order in vendas_ultimo_mes)
+    vendas_ultimo_mes = list(
+        order_collection.find(
+            {"date": {"$gte": primeiro_dia_ultimo_mes, "$lt": primeiro_dia_do_mes}}
+        )
+    )
+    total_vendas_ultimo_mes = sum(order["order_total"] for order in vendas_ultimo_mes)
 
     # Aumento em porcentagem em relação ao último mês
     aumento_em_porcentagem = 0.0
     if total_vendas_ultimo_mes > 0:
-        aumento_em_porcentagem = ((total_vendas - total_vendas_ultimo_mes) / total_vendas_ultimo_mes) * 100
+        aumento_em_porcentagem = (
+            (total_vendas - total_vendas_ultimo_mes) / total_vendas_ultimo_mes
+        ) * 100
 
     # Montando o relatório
     relatorio = {
