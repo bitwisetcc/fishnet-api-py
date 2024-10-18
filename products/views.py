@@ -1,6 +1,5 @@
 from bson import ObjectId
 from flask import Blueprint, jsonify, request
-from flask_cors import cross_origin
 from flask_pydantic import validate
 
 from connections import db
@@ -16,12 +15,11 @@ def to_dict(item):
     return {
         **item,
         "_id": str(item["_id"]),
-        "price": item["price"].to_decimal(),
+        "price": float(item["price"].to_decimal()),
     }
 
 
 @products.post("/")
-@cross_origin()
 @validate()
 def create_species():
     species = request.json
@@ -30,14 +28,12 @@ def create_species():
 
 
 @products.get("/")
-@cross_origin()
 def get_species():
     species = list(collection.find())
     return jsonify([to_dict(f) for f in species]), 200
 
 
 @products.get("/<id>")
-@cross_origin()
 def get_species_by_id(id):
     species = collection.find_one({"_id": ObjectId(id)})
     if species is None:
@@ -47,7 +43,6 @@ def get_species_by_id(id):
 
 
 @products.put("/<id>")
-@cross_origin()
 @validate()
 def update_species(id):
     updated_species = request.json
@@ -58,7 +53,6 @@ def update_species(id):
 
 
 @products.delete("/<id>")
-@cross_origin()
 def delete_species(id):
     result = collection.delete_one({"_id": ObjectId(id)})
     if result.deleted_count:
@@ -67,7 +61,6 @@ def delete_species(id):
 
 
 @products.get("/busca/<query>")
-@cross_origin()
 def get_itens_by_query(query):
     itens = [
         {**doc, "_id": str(doc["_id"])}
@@ -85,7 +78,6 @@ def get_itens_by_query(query):
 
 
 @products.get("/filtros")
-@cross_origin()
 def get_itens_by_filter():
     name = request.args.get("name", "")
     tags = request.args.get("tags")
@@ -173,6 +165,6 @@ def get_itens_by_filter():
             for doc in collection.find(final_filter).sort(sort_criteria)
         ]
     else:
-        itens = [{**doc, "_id": str(doc["_id"])} for doc in collection.find(final_filter)]
+        itens = [to_dict(doc) for doc in collection.find(final_filter)]
 
     return jsonify(itens)
