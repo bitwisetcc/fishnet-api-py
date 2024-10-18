@@ -1,22 +1,16 @@
-from flask import Flask, jsonify
-from pymongo import MongoClient
+from flask import Blueprint, jsonify
 from datetime import datetime, timedelta
-from bson.objectid import ObjectId
+from connections import db
 
-app = Flask(__name__)
-
-# Conectar ao MongoDB
-client = MongoClient("mongodb+srv://api-tester:QyHLaCgakHRjtn9n@finfusion1.uzpenme.mongodb.net/?retryWrites=true&w=majority&appName=FinFusion1")
-db = client['FinFusion']
+# Definindo o Blueprint
+dashboard = Blueprint("dashboard", __name__)
 
 # Coleções
 order_collection = db['order']
-order_items_collection = db['order_items']
-users_collection = db['users']
 
 # Rota para relatório mensal
-@app.route('/order', methods=['GET'])
-def relatorio_mensal():
+@dashboard.route('/order', methods=['GET'])
+def order():
     hoje = datetime.now()
     primeiro_dia_do_mes = hoje.replace(day=1)
     ultimo_mes = primeiro_dia_do_mes - timedelta(days=1)
@@ -38,13 +32,12 @@ def relatorio_mensal():
     vendas_ultimo_mes = list(order_collection.find({
         "date": {"$gte": primeiro_dia_ultimo_mes, "$lt": primeiro_dia_do_mes}
     }))
-    total_vendas_ultimo_mes = sum(order['total'] for order in vendas_ultimo_mes)
+    total_vendas_ultimo_mes = sum(order['order_total'] for order in vendas_ultimo_mes)
 
     # Aumento em porcentagem em relação ao último mês
+    aumento_em_porcentagem = 0.0
     if total_vendas_ultimo_mes > 0:
         aumento_em_porcentagem = ((total_vendas - total_vendas_ultimo_mes) / total_vendas_ultimo_mes) * 100
-    else:
-        aumento_em_porcentagem = 100.0 if total_vendas > 0 else 0.0  # Se não houve vendas no mês anterior, consideramos um aumento de 100% se houver vendas no mês atual.
 
     # Montando o relatório
     relatorio = {
@@ -55,6 +48,3 @@ def relatorio_mensal():
     }
 
     return jsonify(relatorio)
-
-if __name__ == '__main__':
-    app.run(debug=True)
