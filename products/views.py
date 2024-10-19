@@ -19,18 +19,15 @@ def to_dict(item):
     }
 
 
-@products.post("/")
-# @validate()
-def create_species():
-    species = request.json
-    result = collection.insert_one(species)
-    return jsonify(str(result.inserted_id)), 201
-
-
-@products.get("/")
+@products.route("/", methods=["GET", "POST"])
 def get_species():
-    species = list(collection.find())
-    return jsonify([to_dict(f) for f in species]), 200
+    if request.method == "GET":
+        species = list(collection.find())
+        return jsonify([to_dict(f) for f in species]), 200
+    elif request.method == "POST":
+        species = request.get_json()
+        result = collection.insert_one(species)
+        return jsonify(str(result.inserted_id)), 201
 
 
 @products.get("/<id>")
