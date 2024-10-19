@@ -13,7 +13,7 @@ collection = db["teste_species"]
 def to_dict(item):
     item["_id"] = str(item["_id"])
     item["price"] = float(item["price"].to_decimal())
-    return item
+    return {"name": item['name'], "price": item['price']}
 
 
 @products.route("/", methods=["GET", "POST"])
@@ -77,6 +77,7 @@ def get_itens_by_filter():
     tags = request.args.get("tags")
     lancamento = request.args.get("lancamento")
     ordem_alfabetica = request.args.get("ordemAlfabetica")
+    ordem_preco = request.args.get("ordemPreco")
     habitat = request.args.get("habitat")
     feeding = request.args.get("feeding")
     ofertas = request.args.get("ofertas")
@@ -147,11 +148,16 @@ def get_itens_by_filter():
     else:
         final_filter = {}
 
-    sort_criteria = None
+    sort_criteria = []
     if ordem_alfabetica == "A-Z":
         sort_criteria = [("name", 1)]  # Ordena de A-Z
     elif ordem_alfabetica == "Z-A":
         sort_criteria = [("name", -1)]  # Ordena de Z-A
+    
+    if ordem_preco == "crescente":
+        sort_criteria.append(("price", 1))  # Ordena por preço crescente
+    elif ordem_preco == "decrescente":
+        sort_criteria.append(("price", -1))  # Ordena por preço decrescente
 
     if sort_criteria:
         itens = [
