@@ -19,12 +19,10 @@ def order():
 
     # Vendas do mês atual
     vendas_do_mes = list(order_collection.find({"date": {"$gte": primeiro_dia_do_mes}}))
-    total_vendas = sum(order["order_total"] for order in vendas_do_mes)
-
-    print(total_vendas, vendas_do_mes)
+    total_vendas = sum(float(order["order_total"].to_decimal()) for order in vendas_do_mes)
 
     # Clientes atingidos (clientes que fizeram pedidos este mês)
-    clientes_atingidos = set(order["id_costumer"] for order in vendas_do_mes)
+    clientes_atingidos = set(order["id_customer"] for order in vendas_do_mes)
 
     # Compras realizadas (total de pedidos)
     total_compras = len(vendas_do_mes)
@@ -35,7 +33,7 @@ def order():
             {"date": {"$gte": primeiro_dia_ultimo_mes, "$lt": primeiro_dia_do_mes}}
         )
     )
-    total_vendas_ultimo_mes = sum(order["order_total"] for order in vendas_ultimo_mes)
+    total_vendas_ultimo_mes = sum(float(order["order_total"].to_decimal()) for order in vendas_ultimo_mes)
 
     # Aumento em porcentagem em relação ao último mês
     aumento_em_porcentagem = 0.0
