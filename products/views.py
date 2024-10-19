@@ -1,4 +1,4 @@
-from bson import ObjectId
+from bson import Decimal128, ObjectId
 from flask import Blueprint, jsonify, request
 
 from connections import db
@@ -16,16 +16,18 @@ def to_dict(item):
     return item
 
 
-@products.route("/", methods=["GET", "POST"])
+@products.get("/")
 def get_species():
-    if request.method == "GET":
-        species = list(collection.find())
-        return jsonify([to_dict(f) for f in species]), 200
+    species = list(collection.find())
+    return jsonify([to_dict(f) for f in species]), 200
 
-    elif request.method == "POST":
-        species = request.get_json()
-        result = collection.insert_one(species)
-        return jsonify(str(result.inserted_id)), 201
+
+@products.post("/new")
+def post_species():
+    species = request.get_json()
+    species["price"] = Decimal128(species["price"])
+    result = collection.insert_one(species)
+    return jsonify(str(result.inserted_id)), 201
 
 
 @products.get("/<id>")

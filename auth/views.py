@@ -44,6 +44,7 @@ def register():
 
     optional_fields = ["picture", "tel", "state"]
     required_fields = ["name", "email", "password", "addr", "city", "role"]
+
     cpf, cnpj = post_data.get("cpf"), post_data.get("cnpj")
 
     if not all(post_data.get(f) for f in required_fields) or not any([cpf, cnpj]):
@@ -178,7 +179,7 @@ def change_password(payload):
     return jsonify({"message": "Senha antiga inválida."}), 400
 
 
-# @auth.post("/reset-psasword")
+# @auth.post("/reset-password")
 # @cross_origin()
 # def reset_password():
 #     post_data = request.get_json()
