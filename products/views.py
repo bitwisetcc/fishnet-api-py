@@ -1,22 +1,19 @@
 from bson import ObjectId
 from flask import Blueprint, jsonify, request
-from flask_pydantic import validate
 
 from connections import db
 
-collection = db["teste_species"]
 products = Blueprint("products", __name__)
+collection = db["teste_species"]
 
 
 # TODO: upload images to some storage bucket and store the URLs
 
 
 def to_dict(item):
-    return {
-        **item,
-        "_id": str(item["_id"]),
-        "price": float(item["price"].to_decimal()),
-    }
+    item["_id"] = str(item["_id"])
+    item["price"] = float(item["price"].to_decimal())
+    return item
 
 
 @products.route("/", methods=["GET", "POST"])
@@ -24,6 +21,7 @@ def get_species():
     if request.method == "GET":
         species = list(collection.find())
         return jsonify([to_dict(f) for f in species]), 200
+
     elif request.method == "POST":
         species = request.get_json()
         result = collection.insert_one(species)
@@ -40,7 +38,6 @@ def get_species_by_id(id):
 
 
 @products.put("/<id>")
-@validate()
 def update_species(id):
     updated_species = request.json
     result = collection.update_one({"_id": ObjectId(id)}, {"$set": updated_species})
@@ -158,8 +155,7 @@ def get_itens_by_filter():
 
     if sort_criteria:
         itens = [
-            {**doc, "_id": str(doc["_id"])}
-            for doc in collection.find(final_filter).sort(sort_criteria)
+            to_dict(doc) for doc in collection.find(final_filter).sort(sort_criteria)
         ]
     else:
         itens = [to_dict(doc) for doc in collection.find(final_filter)]
