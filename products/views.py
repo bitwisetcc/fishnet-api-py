@@ -13,7 +13,7 @@ collection = db["teste_species"]
 def to_dict(item):
     item["_id"] = str(item["_id"])
     item["price"] = float(item["price"].to_decimal())
-    return {"name": item['name'], "price": item['price']}
+    return item
 
 
 @products.get("/")
