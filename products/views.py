@@ -72,14 +72,12 @@ def get_itens_by_query(query):
 
     return jsonify(itens)
 
-
 @products.get("/filtros")
 def get_itens_by_filter():
     name = request.args.get("name", "")
     tags = request.args.get("tags")
     lancamento = request.args.get("lancamento")
-    ordem_alfabetica = request.args.get("ordemAlfabetica")
-    ordem_preco = request.args.get("ordemPreco")
+    ordem = request.args.get("ordem")
     habitat = request.args.get("habitat")
     feeding = request.args.get("feeding")
     ofertas = request.args.get("ofertas")
@@ -141,25 +139,23 @@ def get_itens_by_filter():
             size_filter["$lte"] = float(max_size)
         filter_conditions.append({"size": size_filter})
 
-    if filter_conditions:
-        final_filter = (
-            {"$and": filter_conditions}
-            if len(filter_conditions) > 1
-            else filter_conditions[0]
-        )
-    else:
-        final_filter = {}
+    final_filter = (
+        {"$and": filter_conditions}
+        if filter_conditions
+        else {}
+    )
 
     sort_criteria = []
-    if ordem_alfabetica == "A-Z":
-        sort_criteria = [("name", 1)]  # Ordena de A-Z
-    elif ordem_alfabetica == "Z-A":
-        sort_criteria = [("name", -1)]  # Ordena de Z-A
-    
-    if ordem_preco == "crescente":
-        sort_criteria.append(("price", 1))  # Ordena por preço crescente
-    elif ordem_preco == "decrescente":
-        sort_criteria.append(("price", -1))  # Ordena por preço decrescente
+    if ordem:
+        if "A-Z" in ordem:
+            sort_criteria.append(("name", 1))  # Ordena de A-Z
+        elif "Z-A" in ordem:
+            sort_criteria.append(("name", -1))  # Ordena de Z-A
+        
+        if "crescente" in ordem:
+            sort_criteria.append(("price", 1))  # Ordena por preço crescente
+        elif "decrescente" in ordem:
+            sort_criteria.append(("price", -1))  # Ordena por preço decrescente
 
     if sort_criteria:
         itens = [
