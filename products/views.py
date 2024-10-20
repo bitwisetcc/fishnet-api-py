@@ -147,14 +147,13 @@ def get_itens_by_filter():
 
     sort_criteria = []
     if ordem:
-        if "A-Z" in ordem:
+        if ordem == "A-Z":
             sort_criteria.append(("name", 1))  # Ordena de A-Z
-        elif "Z-A" in ordem:
+        elif ordem == "Z-A":
             sort_criteria.append(("name", -1))  # Ordena de Z-A
-        
-        if "crescente" in ordem:
+        elif ordem == "crescente":
             sort_criteria.append(("price", 1))  # Ordena por preço crescente
-        elif "decrescente" in ordem:
+        elif ordem == "decrescente":
             sort_criteria.append(("price", -1))  # Ordena por preço decrescente
 
     if sort_criteria:
