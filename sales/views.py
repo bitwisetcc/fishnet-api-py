@@ -1,12 +1,19 @@
+from typing import Any
 from bson import ObjectId
 from flask import Blueprint, jsonify, request
-from flask_pydantic import validate
 
 from connections import db
 
-collection = db["users"]
-users = Blueprint("users", __name__)
+collection = db["order"]
+sales = Blueprint("sales", __name__)
 
-# [POST] /users is implemented as /auth/register
-# { is_company, name, email, phone, rg*1, cpf*1, cnpj*2, serial_CC, expiration_CC, backserial_CC, zip_code?, address? }
 
+def to_dict(item) -> dict[str, Any]:
+    item["_id"] = str(item["id"])
+    return item
+
+
+@sales.get("/")
+def get_sales():
+    orders = collection.find()
+    return jsonify(list(map(to_dict, orders)))

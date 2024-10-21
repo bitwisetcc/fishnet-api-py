@@ -10,8 +10,8 @@ order_collection = db["order"]
 
 
 # Rota para relatório mensal
-@dashboard.route("/order", methods=["GET"])
-def order():
+@dashboard.get("/order")
+def load_dashboard():
     hoje = datetime.now()
     primeiro_dia_do_mes = hoje.replace(day=1)
     ultimo_mes = primeiro_dia_do_mes - timedelta(days=1)
