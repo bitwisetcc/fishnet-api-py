@@ -1,43 +1,36 @@
-from bson import ObjectId
+from bson import Decimal128, ObjectId
 from flask import Blueprint, jsonify, request
-from flask_cors import cross_origin
-from flask_pydantic import validate
 
 from connections import db
 
-collection = db["teste_species"]
 products = Blueprint("products", __name__)
+collection = db["teste_species"]
 
 
 # TODO: upload images to some storage bucket and store the URLs
 
 
 def to_dict(item):
-    return {
-        **item,
-        "_id": str(item["_id"]),
-        "price": item["price"].to_decimal(),
-    }
-
-
-@products.post("/")
-@cross_origin()
-@validate()
-def create_species():
-    species = request.json
-    result = collection.insert_one(species)
-    return jsonify(str(result.inserted_id)), 201
+    item["_id"] = str(item["_id"])
+    item["price"] = float(item["price"].to_decimal())
+    return item
 
 
 @products.get("/")
-@cross_origin()
 def get_species():
     species = list(collection.find())
     return jsonify([to_dict(f) for f in species]), 200
 
 
+@products.post("/new")
+def post_species():
+    species = request.get_json()
+    species["price"] = Decimal128(species["price"])
+    result = collection.insert_one(species)
+    return jsonify(str(result.inserted_id)), 201
+
+
 @products.get("/<id>")
-@cross_origin()
 def get_species_by_id(id):
     species = collection.find_one({"_id": ObjectId(id)})
     if species is None:
@@ -47,8 +40,6 @@ def get_species_by_id(id):
 
 
 @products.put("/<id>")
-@cross_origin()
-@validate()
 def update_species(id):
     updated_species = request.json
     result = collection.update_one({"_id": ObjectId(id)}, {"$set": updated_species})
@@ -58,7 +49,6 @@ def update_species(id):
 
 
 @products.delete("/<id>")
-@cross_origin()
 def delete_species(id):
     result = collection.delete_one({"_id": ObjectId(id)})
     if result.deleted_count:
@@ -67,7 +57,6 @@ def delete_species(id):
 
 
 @products.get("/busca/<query>")
-@cross_origin()
 def get_itens_by_query(query):
     itens = [
         {**doc, "_id": str(doc["_id"])}
@@ -83,14 +72,12 @@ def get_itens_by_query(query):
 
     return jsonify(itens)
 
-
 @products.get("/filtros")
-@cross_origin()
 def get_itens_by_filter():
     name = request.args.get("name", "")
     tags = request.args.get("tags")
     lancamento = request.args.get("lancamento")
-    ordem_alfabetica = request.args.get("ordemAlfabetica")
+    ordem = request.args.get("ordem")
     habitat = request.args.get("habitat")
     feeding = request.args.get("feeding")
     ofertas = request.args.get("ofertas")
@@ -152,27 +139,28 @@ def get_itens_by_filter():
             size_filter["$lte"] = float(max_size)
         filter_conditions.append({"size": size_filter})
 
-    if filter_conditions:
-        final_filter = (
-            {"$and": filter_conditions}
-            if len(filter_conditions) > 1
-            else filter_conditions[0]
-        )
-    else:
-        final_filter = {}
+    final_filter = (
+        {"$and": filter_conditions}
+        if filter_conditions
+        else {}
+    )
 
-    sort_criteria = None
-    if ordem_alfabetica == "A-Z":
-        sort_criteria = [("name", 1)]  # Ordena de A-Z
-    elif ordem_alfabetica == "Z-A":
-        sort_criteria = [("name", -1)]  # Ordena de Z-A
+    sort_criteria = []
+    if ordem:
+        if ordem == "A-Z":
+            sort_criteria.append(("name", 1))  # Ordena de A-Z
+        elif ordem == "Z-A":
+            sort_criteria.append(("name", -1))  # Ordena de Z-A
+        elif ordem == "crescente":
+            sort_criteria.append(("price", 1))  # Ordena por preço crescente
+        elif ordem == "decrescente":
+            sort_criteria.append(("price", -1))  # Ordena por preço decrescente
 
     if sort_criteria:
         itens = [
-            {**doc, "_id": str(doc["_id"])}
-            for doc in collection.find(final_filter).sort(sort_criteria)
+            to_dict(doc) for doc in collection.find(final_filter).sort(sort_criteria)
         ]
     else:
-        itens = [{**doc, "_id": str(doc["_id"])} for doc in collection.find(final_filter)]
+        itens = [to_dict(doc) for doc in collection.find(final_filter)]
 
     return jsonify(itens)

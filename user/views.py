@@ -1,7 +1,9 @@
+from typing import Any
 from bson import ObjectId
 from flask import Blueprint, jsonify, request
 from flask_pydantic import validate
 
+from auth.views import login_required
 from connections import db
 
 collection = db["users"]
@@ -11,7 +13,7 @@ users = Blueprint("users", __name__)
 # { is_company, name, email, phone, rg*1, cpf*1, cnpj*2, serial_CC, expiration_CC, backserial_CC, zip_code?, address? }
 
 
-def to_dict(item):
+def to_dict(item) -> dict[str, Any]:
     item["_id"] = str(item["_id"])
     item["password"] = item["password"].decode()
     return item
@@ -71,3 +73,33 @@ def delete_user(id):
     if result.deleted_count:
         return jsonify({"message": "User deleted"}), 200
     return jsonify({"error": "User not found"}), 404
+
+
+@users.get("/me")
+@login_required
+def get_user_profile(payload):
+    try:
+        user = collection.find_one({ "email": payload["email"] })
+        user = to_dict(user)
+        user.pop("password")
+        return jsonify(user), 200
+    except Exception as e:
+        print(e.args)
+        return jsonify(e.args), 500
+
+
+@users.put("/me")
+@login_required
+def update_user_profile(payload):
+    body = dict(request.get_json())
+
+    blocked_fields = ["email", "name", "_id", "password"]
+    filtered = [f for f in blocked_fields if body.get(f, None)]
+    if filtered:
+        return jsonify({ "message": f"Tried to edit blocked fields: {', '.join(filtered)}"  })
+    
+    res = collection.update_one({ "_id": ObjectId(payload["sub"]) }, { "$set": body })
+    if not res.acknowledged:
+        return jsonify({ "message": "Database failed to write data" }), 500
+
+    return jsonify({ "message": "Object saved successfully" }), 200
