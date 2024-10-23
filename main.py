@@ -13,7 +13,7 @@ load_dotenv()
 
 # Inicializando o aplicativo Flask
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins="*")
 
 app.config["CORS_HEADERS"] = "Content-Type"
 app.config["SECRET_KEY"] = environ.get("SECRET_KEY", ":^)")
