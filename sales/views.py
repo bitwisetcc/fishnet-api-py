@@ -15,8 +15,8 @@ BASE_QUERY = [
             "foreignField": "_id",
             "as": "user",
             "pipeline": [
-                    {"$project": {"name": 1, "cpf": 1}},
-                    {"$set": {"_id": {"$toString": "$_id"}}},
+                {"$project": {"name": 1, "cpf": 1}},
+                {"$set": {"_id": {"$toString": "$_id"}}},
             ],
         }
     },
@@ -36,6 +36,11 @@ BASE_QUERY = [
                 }
             },
             "_id": {"$toString": "$_id"},
+            "total": {
+                "$sum": {
+                    "$map": {"input": "$items", "as": "item", "in": "$$item.price"}
+                }
+            },
         }
     },
 ]
@@ -44,7 +49,6 @@ BASE_QUERY = [
 @sales.get("/")
 def get_all_orders():
     query = collection.aggregate(BASE_QUERY)
-
     return jsonify(list(query))
 
 
@@ -52,10 +56,30 @@ def get_all_orders():
 def filter_sales():
     body = request.get_json()
 
-    query = collection.aggregate(BASE_QUERY + [
-        {
-            "$match": {
-                "user.name": {"$regex": Regex(body.username, "i")},
+    filters = []
+    ordering = {}
+    symbol_mapping = {"+": 1, "-": -1}
+
+    if "username" in body:
+        filters.append(
+            {
+                "$match": {
+                    "user.name": {"$regex": Regex(body.username, "i")},
+                }
             }
-        }
-    ])
+        )
+
+    if "ordering" in body:
+        for ord in body["ordering"]:
+            # +total
+            # -total
+            # +date
+            # -date
+            # +user.name
+            # -user.name
+            ordering[ord[1:]] = symbol_mapping[ord[0]]
+            # TODO: check for invalid orderings
+
+    query = collection.aggregate(BASE_QUERY + filters)
+
+    return jsonify(list(query))
