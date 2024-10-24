@@ -17,23 +17,46 @@ def order():
     ultimo_mes = primeiro_dia_do_mes - timedelta(days=1)
     primeiro_dia_ultimo_mes = ultimo_mes.replace(day=1)
 
-    # Vendas do mês atual
-    vendas_do_mes = list(order_collection.find({"date": {"$gte": primeiro_dia_do_mes}}))
-    total_vendas = sum(float(order["order_total"].to_decimal()) for order in vendas_do_mes)
+    # Vendas do mês atual usando agregação
+    vendas_do_mes_pipeline = [
+        {
+            "$match": {
+                "date": {"$gte": primeiro_dia_do_mes}
+            }
+        },
+        {
+            "$group": {
+                "_id": None,
+                "total_vendas": {"$sum": {"$toDouble": "$order_total"}},
+                "clientes_atingidos": {"$addToSet": "$id_customer"},
+                "total_compras": {"$sum": 1}
+            }
+        }
+    ]
+    
+    vendas_do_mes = list(order_collection.aggregate(vendas_do_mes_pipeline))
+    
+    total_vendas = vendas_do_mes[0]["total_vendas"] if vendas_do_mes else 0
+    clientes_atingidos = len(vendas_do_mes[0]["clientes_atingidos"]) if vendas_do_mes else 0
+    total_compras = vendas_do_mes[0]["total_compras"] if vendas_do_mes else 0
 
-    # Clientes atingidos (clientes que fizeram pedidos este mês)
-    clientes_atingidos = set(order["id_customer"] for order in vendas_do_mes)
-
-    # Compras realizadas (total de pedidos)
-    total_compras = len(vendas_do_mes)
-
-    # Vendas do mês anterior
-    vendas_ultimo_mes = list(
-        order_collection.find(
-            {"date": {"$gte": primeiro_dia_ultimo_mes, "$lt": primeiro_dia_do_mes}}
-        )
-    )
-    total_vendas_ultimo_mes = sum(float(order["order_total"].to_decimal()) for order in vendas_ultimo_mes)
+    # Vendas do mês anterior usando agregação
+    vendas_ultimo_mes_pipeline = [
+        {
+            "$match": {
+                "date": {"$gte": primeiro_dia_ultimo_mes, "$lt": primeiro_dia_do_mes}
+            }
+        },
+        {
+            "$group": {
+                "_id": None,
+                "total_vendas": {"$sum": {"$toDouble": "$order_total"}}
+            }
+        }
+    ]
+    
+    vendas_ultimo_mes = list(order_collection.aggregate(vendas_ultimo_mes_pipeline))
+    total_vendas_ultimo_mes = vendas_ultimo_mes[0]["total_vendas"] if vendas_ultimo_mes else 0
 
     # Aumento em porcentagem em relação ao último mês
     aumento_em_porcentagem = 0.0
@@ -46,7 +69,7 @@ def order():
     relatorio = {
         "total_vendas": total_vendas,
         "aumento_em_porcentagem": aumento_em_porcentagem,
-        "clientes_atingidos": len(clientes_atingidos),
+        "clientes_atingidos": clientes_atingidos,
         "total_compras_realizadas": total_compras,
     }
 
@@ -58,13 +81,15 @@ def to_dict(item):
         "_id": str(item["_id"]),
         "customer": str(item["customer"]),
         "order_total": float(item.get("order_total", 0)),
-        "date": datetime.strptime(item["date"], "%Y-%m-%d %H:%M:%S"),
+        "date": item["date"].isoformat(),
         "status": str(item["status"])
     }
-    
+
 @dashboard.route('/order/top3/<string:period>', methods=['GET'])
 def get_top_3(period):
     hoje = datetime.now()
+    
+    # Determinar o intervalo de datas baseado no período
     if period == "Hoje":
         start_date = hoje.replace(hour=0, minute=0, second=0, microsecond=0)
         end_date = hoje.replace(hour=23, minute=59, second=59, microsecond=999999)
@@ -79,7 +104,7 @@ def get_top_3(period):
         end_date = hoje.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif period == "Mês passado":
         primeiro_dia_ultimo_mes = (hoje.replace(day=1) - timedelta(days=1)).replace(day=1)
-        ultimo_dia_ultimo_mes = hoje.replace(day=1) - timedelta(days=1)
+        ultimo_dia_ultimo_mes = hoje.replace(day=1) - timedelta(seconds=1)
         start_date = primeiro_dia_ultimo_mes
         end_date = ultimo_dia_ultimo_mes.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif period == "Este ano":
@@ -87,10 +112,26 @@ def get_top_3(period):
         end_date = hoje.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif period == "Ano passado":
         start_date = (hoje.replace(month=1, day=1) - timedelta(days=365))
-        end_date = (hoje.replace(month=1, day=1) - timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=999999)
+        end_date = (hoje.replace(month=1, day=1) - timedelta(seconds=1))
+    else:
+        return jsonify({"error": "Período inválido"}), 400
 
-    top_orders = list(order_collection.find({
-        "date": {"$gte": start_date, "$lt": end_date}
-    }).sort("order_total", -1).limit(3))
+    top_orders_pipeline = [
+        {
+            "$match": {
+                "date": {"$gte": start_date, "$lt": end_date}
+            }
+        },
+        {
+            "$sort": {
+                "order_total": -1
+            }
+        },
+        {
+            "$limit": 3
+        }
+    ]
+    
+    top_orders = list(order_collection.aggregate(top_orders_pipeline))
 
     return jsonify([to_dict(order) for order in top_orders]), 200
