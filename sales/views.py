@@ -1,5 +1,5 @@
 from typing import Any
-from bson import Regex
+from bson import ObjectId, Regex
 from flask import Blueprint, jsonify, request
 
 from connections import db
@@ -38,8 +38,10 @@ BASE_QUERY = [
             },
             "_id": {"$toString": "$_id"},
             "total": {
-                "$sum": {
-                    "$map": {"input": "$items", "as": "item", "in": "$$item.price"}
+                "$toDouble": {
+                    "$sum": {
+                        "$map": {"input": "$items", "as": "item", "in": "$$item.price"}
+                    }
                 }
             },
         }
@@ -61,25 +63,39 @@ def filter_sales():
     ordering = {}
     symbol_mapping = {"+": 1, "-": -1}
 
+    # TODO: condense all filters into one big match
     if "username" in body:
         filters.append(
             {
                 "$match": {
-                    "user.name": {"$regex": Regex(body.username, "i")},
+                    "user.name": {"$regex": Regex(body["username"], "i")},
                 }
             }
         )
 
+    # TODO: validate field types
+    if "min" in body:
+        filters.append({"$match": {"total": {"$gte": body["min"]}}})
+
+    if "max" in body:
+        filters.append({"$match": {"total": {"$lte": body["max"]}}})
+
+    if "products" in body:
+        filters.append({"$match": {"items._id": {"$in": body["products"]}}})
+
     if "ordering" in body:
         for ord in body["ordering"]:
             key = ord[1:]
-            direction = symbol_mapping[ord[0]]
+            direction = symbol_mapping.get(ord[0])
 
-            if key in ["total", "date", "user.name"] and direction in "+-":
+            if key in ["total", "date", "user.name"] and direction is not None:
                 ordering[key] = direction
             else:
                 return jsonify({"message": f"Invalid ordering '{ord}'"}), 400
 
-    query = collection.aggregate(BASE_QUERY + filters + {"$order": ordering})
+    if not ordering:
+        ordering["_id"] = 1
+
+    query = collection.aggregate(BASE_QUERY + filters + [{"$sort": ordering}])
 
     return jsonify(list(query))
