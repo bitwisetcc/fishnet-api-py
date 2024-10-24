@@ -1,3 +1,4 @@
+from typing import Any
 from bson import Regex
 from flask import Blueprint, jsonify, request
 
@@ -71,15 +72,14 @@ def filter_sales():
 
     if "ordering" in body:
         for ord in body["ordering"]:
-            # +total
-            # -total
-            # +date
-            # -date
-            # +user.name
-            # -user.name
-            ordering[ord[1:]] = symbol_mapping[ord[0]]
-            # TODO: check for invalid orderings
+            key = ord[1:]
+            direction = symbol_mapping[ord[0]]
 
-    query = collection.aggregate(BASE_QUERY + filters)
+            if key in ["total", "date", "user.name"] and direction in "+-":
+                ordering[key] = direction
+            else:
+                return jsonify({"message": f"Invalid ordering '{ord}'"}), 400
+
+    query = collection.aggregate(BASE_QUERY + filters + {"$order": ordering})
 
     return jsonify(list(query))
