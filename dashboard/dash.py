@@ -17,10 +17,11 @@ def order():
 
     vendas_do_mes_pipeline = [
         {"$match": {"date": {"$gte": primeiro_dia_do_mes}}},
+        {"$unwind": "$items"},
         {
             "$group": {
                 "_id": None,
-                "total_vendas": {"$sum": {"$toDouble": "$order_total"}},
+                "total_vendas": {"$sum": {"$multiply": ["$items.price", "$items.qty"]}},
                 "clientes_atingidos": {"$addToSet": "$id_customer"},
                 "total_compras": {"$sum": 1},
             }
@@ -41,10 +42,11 @@ def order():
                 "date": {"$gte": primeiro_dia_ultimo_mes, "$lt": primeiro_dia_do_mes}
             }
         },
+        {"$unwind": "$items"},
         {
             "$group": {
                 "_id": None,
-                "total_vendas": {"$sum": {"$toDouble": "$order_total"}},
+                "total_vendas": {"$sum": {"$multiply": ["$items.price", "$items.qty"]}},
             }
         },
     ]
@@ -75,7 +77,6 @@ def to_dict(item):
         **item,
         "_id": str(item.get("_id")),
         "customer": str(item.get("customer", "")),
-        "order_total": float(item.get("order_total", 0).to_decimal()),
         "date": item.get("date").isoformat() if item.get("date") else "",
         "status": str(item.get("status", "")),
     }
@@ -112,7 +113,7 @@ def get_top_3(period):
         )
     elif period == "Este ano":
         start_date = hoje.replace(month=1, day=1)
-        end_date = hoje.replace(hour=23, minute=59, second=59, microsecond=999999)
+        end_date = hoje.replace(hour=23, minute=59, second=0, microsecond=0)
     elif period == "Ano passado":
         start_date = hoje.replace(month=1, day=1) - timedelta(days=365)
         end_date = hoje.replace(month=1, day=1) - timedelta(seconds=1)
@@ -121,41 +122,14 @@ def get_top_3(period):
 
     top_orders_pipeline = [
         {"$match": {"date": {"$gte": start_date, "$lt": end_date}}},
+        {"$unwind": "$items"},
         {
-            "$lookup": {
-                "from": "users",
-                "localField": "id_customer",
-                "foreignField": "_id",
-                "as": "user",
-                "pipeline": [
-                    {"$project": {"name": 1, "cpf": 1}},
-                    {"$set": {"_id": {"$toString": "$_id"}}},
-                ],
-            }
-        },
-        {"$unset": ["id_customer"]},
-        {
-            "$set": {
-                "order_total": {
-                    "$sum": {
-                        "$map": {
-                            "input": "$items",
-                            "as": "item",
-                            "in": "$$item.price",
-                        }
-                    }
-                },
-                "items": {
-                    "$map": {
-                        "input": "$items",
-                        "as": "item",
-                        "in": {
-                            "_id": {"$toString": "$$item._id"},
-                            "price": {"$toDouble": "$$item.price"},
-                            "qty": "$$item.qty",
-                        },
-                    }
-                },
+            "$group": {
+                "_id": "$_id",
+                "order_total": {"$sum": {"$multiply": ["$items.price", "$items.qty"]}},
+                "id_customer": {"$first": "$id_customer"},
+                "date": {"$first": "$date"},
+                "status": {"$first": "$status"},
             }
         },
         {"$sort": {"order_total": -1}},
@@ -163,30 +137,36 @@ def get_top_3(period):
     ]
 
     top_orders = list(order_collection.aggregate(top_orders_pipeline))
-    print(top_orders[0])
-
     return jsonify([to_dict(order) for order in top_orders]), 200
-
 
 @dashboard.route("/annual-sales", methods=["GET"])
 def get_annual_sales_data():
     start_of_year = datetime(datetime.now().year, 1, 1)
     monthly_sales_pipeline = [
-        {"$match": {"date": {"$gte": start_of_year}}},
         {
-            "$group": {
-                "_id": {"month": {"$month": "$date"}},
-                "total_sales": {"$sum": {"$toDouble": "$order_total"}},
+            "$match": {
+                "date": {"$gte": start_of_year}
             }
         },
-        {"$sort": {"_id.month": 1}},
+        {
+            "$unwind": "$items" 
+        },
+        {
+            "$group": {
+                "_id": {"month": {"$month": "$date"}}, 
+                "total_sales": {
+                    "$sum": {
+                        "$multiply": ["$items.price", "$items.qty"] 
+                    }
+                }
+            }
+        },
+        {
+            "$sort": {"_id.month": 1}
+        }
     ]
-
+    
     monthly_sales_data = list(order_collection.aggregate(monthly_sales_pipeline))
-
-    sales = {
-        month["_id"]["month"]: month.get("total_sales", 0)
-        for month in monthly_sales_data
-        if "_id" in month and "month" in month["_id"]
-    }
+    
+    sales = {month["_id"]["month"]: month.get("total_sales", 0) for month in monthly_sales_data if "_id" in month and "month" in month["_id"]}
     return jsonify(sales)
