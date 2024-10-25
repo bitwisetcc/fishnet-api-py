@@ -2,14 +2,11 @@ from flask import Blueprint, jsonify
 from datetime import datetime, timedelta
 from connections import db
 
-# Definindo o Blueprint
 dashboard = Blueprint("dashboard", __name__)
 
-# Coleções
 order_collection = db['order']
 client_collection = db['client']
 
-# Rota para relatório mensal
 @dashboard.route("/order", methods=["GET"])
 def order():
     hoje = datetime.now()
@@ -17,7 +14,6 @@ def order():
     ultimo_mes = primeiro_dia_do_mes - timedelta(days=1)
     primeiro_dia_ultimo_mes = ultimo_mes.replace(day=1)
 
-    # Vendas do mês atual usando agregação
     vendas_do_mes_pipeline = [
         {
             "$match": {
@@ -36,11 +32,10 @@ def order():
     
     vendas_do_mes = list(order_collection.aggregate(vendas_do_mes_pipeline))
     
-    total_vendas = vendas_do_mes[0]["total_vendas"] if vendas_do_mes else 0
-    clientes_atingidos = len(vendas_do_mes[0]["clientes_atingidos"]) if vendas_do_mes else 0
-    total_compras = vendas_do_mes[0]["total_compras"] if vendas_do_mes else 0
+    total_vendas = vendas_do_mes[0].get("total_vendas", 0) if vendas_do_mes else 0
+    clientes_atingidos = len(vendas_do_mes[0].get("clientes_atingidos", [])) if vendas_do_mes else 0
+    total_compras = vendas_do_mes[0].get("total_compras", 0) if vendas_do_mes else 0
 
-    # Vendas do mês anterior usando agregação
     vendas_ultimo_mes_pipeline = [
         {
             "$match": {
@@ -56,16 +51,14 @@ def order():
     ]
     
     vendas_ultimo_mes = list(order_collection.aggregate(vendas_ultimo_mes_pipeline))
-    total_vendas_ultimo_mes = vendas_ultimo_mes[0]["total_vendas"] if vendas_ultimo_mes else 0
+    total_vendas_ultimo_mes = vendas_ultimo_mes[0].get("total_vendas", 0) if vendas_ultimo_mes else 0
 
-    # Aumento em porcentagem em relação ao último mês
     aumento_em_porcentagem = 0.0
     if total_vendas_ultimo_mes > 0:
         aumento_em_porcentagem = (
             (total_vendas - total_vendas_ultimo_mes) / total_vendas_ultimo_mes
         ) * 100
 
-    # Montando o relatório
     relatorio = {
         "total_vendas": total_vendas,
         "aumento_em_porcentagem": aumento_em_porcentagem,
@@ -78,18 +71,17 @@ def order():
 def to_dict(item):
     return {
         **item,
-        "_id": str(item["_id"]),
-        "customer": str(item["customer"]),
+        "_id": str(item.get("_id")),
+        "customer": str(item.get("customer", "")),
         "order_total": float(item.get("order_total", 0)),
-        "date": item["date"].isoformat(),
-        "status": str(item["status"])
+        "date": item.get("date").isoformat() if item.get("date") else "",
+        "status": str(item.get("status", ""))
     }
 
 @dashboard.route('/order/top3/<string:period>', methods=['GET'])
 def get_top_3(period):
     hoje = datetime.now()
     
-    # Determinar o intervalo de datas baseado no período
     if period == "Hoje":
         start_date = hoje.replace(hour=0, minute=0, second=0, microsecond=0)
         end_date = hoje.replace(hour=23, minute=59, second=59, microsecond=999999)
@@ -135,3 +127,28 @@ def get_top_3(period):
     top_orders = list(order_collection.aggregate(top_orders_pipeline))
 
     return jsonify([to_dict(order) for order in top_orders]), 200
+
+@dashboard.route('/annual-sales', methods=['GET'])
+def get_annual_sales_data():
+    start_of_year = datetime(datetime.now().year, 1, 1)
+    monthly_sales_pipeline = [
+        {
+            "$match": {
+                "date": {"$gte": start_of_year}
+            }
+        },
+        {
+            "$group": {
+                "_id": {"month": {"$month": "$date"}},
+                "total_sales": {"$sum": {"$toDouble": "$order_total"}}
+            }
+        },
+        {
+            "$sort": {"_id.month": 1}
+        }
+    ]
+    
+    monthly_sales_data = list(order_collection.aggregate(monthly_sales_pipeline))
+    
+    sales = {month["_id"]["month"]: month.get("total_sales", 0) for month in monthly_sales_data if "_id" in month and "month" in month["_id"]}
+    return jsonify(sales)
