@@ -15,21 +15,17 @@ def order():
     primeiro_dia_ultimo_mes = ultimo_mes.replace(day=1)
 
     vendas_do_mes_pipeline = [
-        {
-            "$match": {
-                "date": {"$gte": primeiro_dia_do_mes}
-            }
-        },
+        {"$match": {"date": {"$gte": primeiro_dia_do_mes}}},
         {
             "$group": {
                 "_id": None,
                 "total_vendas": {"$sum": {"$toDouble": "$order_total"}},
                 "clientes_atingidos": {"$addToSet": "$id_customer"},
-                "total_compras": {"$sum": 1}
+                "total_compras": {"$sum": 1},
             }
-        }
+        },
     ]
-    
+
     vendas_do_mes = list(order_collection.aggregate(vendas_do_mes_pipeline))
     
     total_vendas = vendas_do_mes[0].get("total_vendas", 0) if vendas_do_mes else 0
@@ -45,11 +41,11 @@ def order():
         {
             "$group": {
                 "_id": None,
-                "total_vendas": {"$sum": {"$toDouble": "$order_total"}}
+                "total_vendas": {"$sum": {"$toDouble": "$order_total"}},
             }
-        }
+        },
     ]
-    
+
     vendas_ultimo_mes = list(order_collection.aggregate(vendas_ultimo_mes_pipeline))
     total_vendas_ultimo_mes = vendas_ultimo_mes[0].get("total_vendas", 0) if vendas_ultimo_mes else 0
 
@@ -68,6 +64,7 @@ def order():
 
     return jsonify(relatorio)
 
+
 def to_dict(item):
     return {
         **item,
@@ -78,7 +75,8 @@ def to_dict(item):
         "status": str(item.get("status", ""))
     }
 
-@dashboard.route('/order/top3/<string:period>', methods=['GET'])
+
+@dashboard.route("/order/top3/<string:period>", methods=["GET"])
 def get_top_3(period):
     hoje = datetime.now()
     
@@ -103,27 +101,17 @@ def get_top_3(period):
         start_date = hoje.replace(month=1, day=1)
         end_date = hoje.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif period == "Ano passado":
-        start_date = (hoje.replace(month=1, day=1) - timedelta(days=365))
-        end_date = (hoje.replace(month=1, day=1) - timedelta(seconds=1))
+        start_date = hoje.replace(month=1, day=1) - timedelta(days=365)
+        end_date = hoje.replace(month=1, day=1) - timedelta(seconds=1)
     else:
         return jsonify({"error": "Período inválido"}), 400
 
     top_orders_pipeline = [
-        {
-            "$match": {
-                "date": {"$gte": start_date, "$lt": end_date}
-            }
-        },
-        {
-            "$sort": {
-                "order_total": -1
-            }
-        },
-        {
-            "$limit": 3
-        }
+        {"$match": {"date": {"$gte": start_date, "$lt": end_date}}},
+        {"$sort": {"order_total": -1}},
+        {"$limit": 3},
     ]
-    
+
     top_orders = list(order_collection.aggregate(top_orders_pipeline))
 
     return jsonify([to_dict(order) for order in top_orders]), 200
