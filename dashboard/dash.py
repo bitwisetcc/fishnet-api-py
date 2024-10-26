@@ -1,4 +1,3 @@
-from bson import ObjectId
 from flask import Blueprint, jsonify
 from datetime import datetime, timedelta
 from connections import db
@@ -29,7 +28,7 @@ def order():
         },
     ]
 
-    vendas_do_mes = [to_dict(doc) for doc in vendas_do_mes] if vendas_do_mes else []
+    vendas_do_mes = list(order_collection.aggregate(vendas_do_mes_pipeline))
 
     total_vendas = vendas_do_mes[0].get("total_vendas", 0) if vendas_do_mes else 0
     clientes_atingidos = (
@@ -72,11 +71,16 @@ def order():
 
     return jsonify(relatorio)
 
+
 def to_dict(item):
     return {
-        **{k: str(v) if isinstance(v, ObjectId) else v for k, v in item.items()},
+        **item,
+        "_id": str(item.get("_id")),
+        "customer": str(item.get("customer", "")),
         "date": item.get("date").isoformat() if item.get("date") else "",
+        "status": str(item.get("status", "")),
     }
+
 
 @dashboard.route("/order/top3/<string:period>", methods=["GET"])
 def get_top_3(period):
@@ -132,7 +136,7 @@ def get_top_3(period):
         {"$limit": 3},
     ]
 
-    top_orders = [to_dict(doc) for doc in top_orders]
+    top_orders = list(order_collection.aggregate(top_orders_pipeline))
     return jsonify([to_dict(order) for order in top_orders]), 200
 
 @dashboard.route("/annual-sales", methods=["GET"])
