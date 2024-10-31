@@ -1,11 +1,6 @@
-from flask import Blueprint, jsonify, senf_file
+from flask import Blueprint, jsonify
 from datetime import datetime, timedelta
 from connections import db
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from io import BytesIO
-import os
-import subprocess
 
 # Definindo o Blueprint
 dashboard = Blueprint("dashboard", __name__)
@@ -157,56 +152,3 @@ def get_annual_sales_data():
     
     sales = {month["_id"]["month"]: month.get("total_sales", 0) for month in monthly_sales_data if "_id" in month and "month" in month["_id"]}
     return jsonify(sales)
-
-@dashboard.route('/backup', methods=['GET'])
-def backup_data():
-    backup_dir = "./backups"
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = f"{backup_dir}/orders_real_users_{timestamp}.bson"
-    
-    os.makedirs(backup_dir, exist_ok=True)
-    
-    command = [
-        "mongodump",
-        "--db", "FinFusion",
-        "--collection", "orders_real_users",
-        "--out", backup_path
-    ]
-    
-    try:
-        subprocess.run(command, check=True)
-        return send_file(backup_path, as_attachment=True)
-    except subprocess.CalledProcessError as e:
-        return jsonify({"error": "Falha no backup"}), 500
-    
-
-@dashboard.route('/export/pdf', methods=['GET'])
-def export_sales_pdf():
-    hoje = datetime.now()
-    primeiro_dia_do_mes = hoje.replace(day=1)
-    
-    vendas_do_mes = list(order_collection.find({
-        "date": {"$gte": primeiro_dia_do_mes}
-    }))
-    
-    pdf_buffer = BytesIO()
-    pdf = canvas.Canvas(pdf_buffer, pagesize=letter)
-    pdf.setTitle("Relatório de Vendas do Mês")
-    
-    pdf.drawString(30, 750, "Relatório de Vendas do Mês")
-    pdf.drawString(30, 735, "ID do Cliente - Data - Total do Pedido")
-    
-    y_position = 715
-    for venda in vendas_do_mes:
-        order_total = sum(item['price'] * item['qty'] for item in venda.get('items', []))
-        linha = f"{venda.get('id_customer')} - {venda.get('date').strftime('%Y-%m-%d')} - R$ {order_total:.2f}"
-        pdf.drawString(30, y_position, linha)
-        y_position -= 15
-        if y_position < 40:
-            pdf.showPage()
-            y_position = 750
-    
-    pdf.save()
-    pdf_buffer.seek(0)
-    
-    return send_file(pdf_buffer, as_attachment=True, download_name="relatorio_vendas_mes.pdf", mimetype="application/pdf")
