@@ -1,99 +1,83 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, senf_file
 from datetime import datetime, timedelta
 from connections import db
-from bson import ObjectId
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from io import BytesIO
+import os
+import subprocess
 
+# Definindo o Blueprint
 dashboard = Blueprint("dashboard", __name__)
 
-order_collection = db["orders_real_users"]
-client_collection = db["users"]
+# Coleções
+order_collection = db['order_real_users']
+client_collection = db['client']
 
+def calculate_order_total(order):
+    return sum(item['price'] * item['qty'] for item in order.get('items', []))
 
-@dashboard.route("/order", methods=["GET"])
+# Rota para relatório mensal
+@dashboard.route('/order', methods=['GET'])
 def order():
     hoje = datetime.now()
     primeiro_dia_do_mes = hoje.replace(day=1)
     ultimo_mes = primeiro_dia_do_mes - timedelta(days=1)
     primeiro_dia_ultimo_mes = ultimo_mes.replace(day=1)
 
-    vendas_do_mes_pipeline = [
-        {"$match": {"date": {"$gte": primeiro_dia_do_mes}}},
-        {"$unwind": "$items"},
-        {
-            "$group": {
-                "_id": None,
-                "total_vendas": {"$sum": {"$multiply": ["$items.price", "$items.qty"]}},
-                "clientes_atingidos": {"$addToSet": "$id_customer"},
-                "total_compras": {"$sum": 1},
-            }
-        },
-    ]
+    # Vendas do mês atual
+    vendas_do_mes = list(order_collection.find({
+        "date": {"$gte": primeiro_dia_do_mes}
+    }))
+    total_vendas = sum(calculate_order_total(order) for order in vendas_do_mes)
 
-    vendas_do_mes = [to_dict(doc) for doc in vendas_do_mes] if vendas_do_mes else []
+    # Clientes atingidos (clientes que fizeram pedidos este mês)
+    clientes_atingidos = set(order.get('id_costumer') for order in vendas_do_mes)
 
-    total_vendas = vendas_do_mes[0].get("total_vendas", 0) if vendas_do_mes else 0
-    clientes_atingidos = (
-        len(vendas_do_mes[0].get("clientes_atingidos", [])) if vendas_do_mes else 0
-    )
-    total_compras = vendas_do_mes[0].get("total_compras", 0) if vendas_do_mes else 0
+    # Compras realizadas (total de pedidos)
+    total_compras = len(vendas_do_mes)
 
-    vendas_ultimo_mes_pipeline = [
-        {
-            "$match": {
-                "date": {"$gte": primeiro_dia_ultimo_mes, "$lt": primeiro_dia_do_mes}
-            }
-        },
-        {"$unwind": "$items"},
-        {
-            "$group": {
-                "_id": None,
-                "total_vendas": {"$sum": {"$multiply": ["$items.price", "$items.qty"]}},
-            }
-        },
-    ]
+    # Vendas do mês anterior
+    vendas_ultimo_mes = list(order_collection.find({
+        "date": {"$gte": primeiro_dia_ultimo_mes, "$lt": primeiro_dia_do_mes}
+    }))
+    total_vendas_ultimo_mes = sum(calculate_order_total(order) for order in vendas_ultimo_mes)
 
-    vendas_ultimo_mes = list(order_collection.aggregate(vendas_ultimo_mes_pipeline))
-    total_vendas_ultimo_mes = (
-        vendas_ultimo_mes[0].get("total_vendas", 0) if vendas_ultimo_mes else 0
-    )
-
+    # Aumento em porcentagem em relação ao último mês
     aumento_em_porcentagem = 0.0
     if total_vendas_ultimo_mes > 0:
-        aumento_em_porcentagem = (
-            (total_vendas - total_vendas_ultimo_mes) / total_vendas_ultimo_mes
-        ) * 100
+        aumento_em_porcentagem = ((total_vendas - total_vendas_ultimo_mes) / total_vendas_ultimo_mes) * 100
 
+    # Montando o relatório
     relatorio = {
         "total_vendas": total_vendas,
         "aumento_em_porcentagem": aumento_em_porcentagem,
-        "clientes_atingidos": clientes_atingidos,
+        "clientes_atingidos": len(clientes_atingidos),
         "total_compras_realizadas": total_compras,
     }
 
     return jsonify(relatorio)
 
-
-def to_dict(item):
+def to_dict(order):
     return {
-        **{k: str(v) if isinstance(v, ObjectId) else v for k, v in item.items()},
-        "date": item.get("date").isoformat() if item.get("date") else "",
+        **order,
+        "_id": str(order.get("_id")),
+        "customer": str(order.get("id_customer", "")),
+        "order_total": calculate_order_total(order),
+        "date": order.get("date").isoformat() if order.get("date") else "",
+        "status": str(order.get("status", ""))
     }
 
-
-@dashboard.route("/order/top3/<string:period>", methods=["GET"])
+@dashboard.route('/order/top3/<string:period>', methods=['GET'])
 def get_top_3(period):
     hoje = datetime.now()
-
+    
     if period == "Hoje":
         start_date = hoje.replace(hour=0, minute=0, second=0, microsecond=0)
         end_date = hoje.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif period == "Ontem":
-        start_date = (hoje - timedelta(days=1)).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
-        end_date = (hoje - timedelta(days=1)).replace(
-            hour=23, minute=59, second=59, microsecond=999999
-        )
+        start_date = (hoje - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = (hoje - timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=999999)
     elif period == "Semana":
         start_date = hoje - timedelta(days=hoje.weekday())
         end_date = hoje.replace(hour=23, minute=59, second=59, microsecond=999999)
@@ -101,44 +85,48 @@ def get_top_3(period):
         start_date = hoje.replace(day=1)
         end_date = hoje.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif period == "Mês passado":
-        primeiro_dia_ultimo_mes = (hoje.replace(day=1) - timedelta(days=1)).replace(
-            day=1
-        )
+        primeiro_dia_ultimo_mes = (hoje.replace(day=1) - timedelta(days=1)).replace(day=1)
         ultimo_dia_ultimo_mes = hoje.replace(day=1) - timedelta(seconds=1)
         start_date = primeiro_dia_ultimo_mes
-        end_date = ultimo_dia_ultimo_mes.replace(
-            hour=23, minute=59, second=59, microsecond=999999
-        )
+        end_date = ultimo_dia_ultimo_mes.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif period == "Este ano":
         start_date = hoje.replace(month=1, day=1)
-        end_date = hoje.replace(hour=23, minute=59, second=0, microsecond=0)
+        end_date = hoje.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif period == "Ano passado":
-        start_date = hoje.replace(month=1, day=1) - timedelta(days=365)
-        end_date = hoje.replace(month=1, day=1) - timedelta(seconds=1)
+        start_date = (hoje.replace(month=1, day=1) - timedelta(days=365))
+        end_date = (hoje.replace(month=1, day=1) - timedelta(seconds=1))
     else:
         return jsonify({"error": "Período inválido"}), 400
 
     top_orders_pipeline = [
-        {"$match": {"date": {"$gte": start_date, "$lt": end_date}}},
-        {"$unwind": "$items"},
         {
-            "$group": {
-                "_id": "$_id",
-                "order_total": {"$sum": {"$multiply": ["$items.price", "$items.qty"]}},
-                "id_customer": {"$first": "$id_customer"},
-                "date": {"$first": "$date"},
-                "status": {"$first": "$status"},
+            "$match": {
+                "date": {"$gte": start_date, "$lt": end_date}
             }
         },
-        {"$sort": {"order_total": -1}},
-        {"$limit": 3},
+        {
+            "$addFields": {
+                "order_total": {"$sum": {"$map": {
+                    "input": "$items",
+                    "as": "item",
+                    "in": {"$multiply": ["$$item.price", "$$item.qty"]}
+                }}}
+            }
+        },
+        {
+            "$sort": {
+                "order_total": -1
+            }
+        },
+        {
+            "$limit": 3
+        }
     ]
-
+    
     top_orders = list(order_collection.aggregate(top_orders_pipeline))
-    top_orders = [to_dict(order) for order in top_orders] if top_orders else []
-    return jsonify(top_orders), 200
+    return jsonify([to_dict(order) for order in top_orders]), 200
 
-@dashboard.route("/annual-sales", methods=["GET"])
+@dashboard.route('/annual-sales', methods=['GET'])
 def get_annual_sales_data():
     start_of_year = datetime(datetime.now().year, 1, 1)
     monthly_sales_pipeline = [
@@ -152,7 +140,7 @@ def get_annual_sales_data():
         },
         {
             "$group": {
-                "_id": {"month": {"$month": "$date"}}, 
+                "_id": {"month": {"$month": "$date"}},
                 "total_sales": {
                     "$sum": {
                         "$multiply": ["$items.price", "$items.qty"] 
@@ -161,7 +149,7 @@ def get_annual_sales_data():
             }
         },
         {
-            "$sort": {"_id.month": 1}
+            "$sort": {"_id.month": 1} 
         }
     ]
     
@@ -169,3 +157,56 @@ def get_annual_sales_data():
     
     sales = {month["_id"]["month"]: month.get("total_sales", 0) for month in monthly_sales_data if "_id" in month and "month" in month["_id"]}
     return jsonify(sales)
+
+@dashboard.route('/backup', methods=['GET'])
+def backup_data():
+    backup_dir = "./backups"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = f"{backup_dir}/orders_real_users_{timestamp}.bson"
+    
+    os.makedirs(backup_dir, exist_ok=True)
+    
+    command = [
+        "mongodump",
+        "--db", "FinFusion",
+        "--collection", "orders_real_users",
+        "--out", backup_path
+    ]
+    
+    try:
+        subprocess.run(command, check=True)
+        return send_file(backup_path, as_attachment=True)
+    except subprocess.CalledProcessError as e:
+        return jsonify({"error": "Falha no backup"}), 500
+    
+
+@dashboard.route('/export/pdf', methods=['GET'])
+def export_sales_pdf():
+    hoje = datetime.now()
+    primeiro_dia_do_mes = hoje.replace(day=1)
+    
+    vendas_do_mes = list(order_collection.find({
+        "date": {"$gte": primeiro_dia_do_mes}
+    }))
+    
+    pdf_buffer = BytesIO()
+    pdf = canvas.Canvas(pdf_buffer, pagesize=letter)
+    pdf.setTitle("Relatório de Vendas do Mês")
+    
+    pdf.drawString(30, 750, "Relatório de Vendas do Mês")
+    pdf.drawString(30, 735, "ID do Cliente - Data - Total do Pedido")
+    
+    y_position = 715
+    for venda in vendas_do_mes:
+        order_total = sum(item['price'] * item['qty'] for item in venda.get('items', []))
+        linha = f"{venda.get('id_customer')} - {venda.get('date').strftime('%Y-%m-%d')} - R$ {order_total:.2f}"
+        pdf.drawString(30, y_position, linha)
+        y_position -= 15
+        if y_position < 40:
+            pdf.showPage()
+            y_position = 750
+    
+    pdf.save()
+    pdf_buffer.seek(0)
+    
+    return send_file(pdf_buffer, as_attachment=True, download_name="relatorio_vendas_mes.pdf", mimetype="application/pdf")
