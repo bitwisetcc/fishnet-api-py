@@ -57,7 +57,7 @@ def get_all_orders():
 
 @sales.get("/filter")
 def filter_sales():
-    body = request.get_json()
+    body = request.args
 
     filters = []
     ordering = {}
@@ -75,16 +75,17 @@ def filter_sales():
 
     # TODO: validate field types
     if "min" in body:
-        filters.append({"$match": {"total": {"$gte": body["min"]}}})
+        filters.append({"$match": {"total": {"$gte": float(body["min"])}}})
 
     if "max" in body:
-        filters.append({"$match": {"total": {"$lte": body["max"]}}})
+        filters.append({"$match": {"total": {"$lte": float(body["max"])}}})
 
     if "products" in body:
-        filters.append({"$match": {"items._id": {"$in": body["products"]}}})
+        filters.append({"$match": {"items._id": {"$in": body["products"].split(",")}}})
 
     if "ordering" in body:
-        for ord in body["ordering"]:
+        for ord in body["ordering"].split(","):
+            print(body)
             key = ord[1:]
             direction = symbol_mapping.get(ord[0])
 
