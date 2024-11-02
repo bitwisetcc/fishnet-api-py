@@ -97,6 +97,10 @@ def filter_sales():
     if not ordering:
         ordering["_id"] = 1
 
-    query = collection.aggregate(BASE_QUERY + filters + [{"$sort": ordering}])
+    count = int(body.get("count", 20))
+    page = int(body.get("page", 1))
+    pagination = [{"$skip": count * (page - 1)}, {"$limit": count}]
+
+    query = collection.aggregate(BASE_QUERY + filters + [{"$sort": ordering}] + pagination)
 
     return jsonify(list(query))

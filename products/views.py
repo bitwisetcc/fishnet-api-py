@@ -72,6 +72,7 @@ def get_itens_by_query(query):
 
     return jsonify(itens)
 
+
 @products.get("/filtros")
 def get_itens_by_filter():
     name = request.args.get("name", "")
@@ -139,11 +140,7 @@ def get_itens_by_filter():
             size_filter["$lte"] = float(max_size)
         filter_conditions.append({"size": size_filter})
 
-    final_filter = (
-        {"$and": filter_conditions}
-        if filter_conditions
-        else {}
-    )
+    final_filter = {"$and": filter_conditions} if filter_conditions else {}
 
     sort_criteria = []
     if ordem:
@@ -156,11 +153,23 @@ def get_itens_by_filter():
         elif ordem == "decrescente":
             sort_criteria.append(("price", -1))  # Ordena por preço decrescente
 
+    count = int(request.args.get("count", 20))
+    page = int(request.args.get("page", 1))
+
     if sort_criteria:
         itens = [
-            to_dict(doc) for doc in collection.find(final_filter).sort(sort_criteria)
+            to_dict(doc)
+            for doc in collection.find(final_filter)
+            .sort(sort_criteria)
+            .skip(count * (page - 1))
+            .limit(count)
         ]
     else:
-        itens = [to_dict(doc) for doc in collection.find(final_filter)]
+        itens = [
+            to_dict(doc)
+            for doc in collection.find(final_filter)
+            .skip(count * (page - 1))
+            .limit(count)
+        ]
 
     return jsonify(itens)
