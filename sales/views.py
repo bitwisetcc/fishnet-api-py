@@ -1,3 +1,4 @@
+from collections import defaultdict
 from typing import Any
 from bson import ObjectId, Regex
 from flask import Blueprint, jsonify, request
@@ -59,29 +60,22 @@ def get_all_orders():
 def filter_sales():
     body = request.args
 
-    filters = []
+    filters = defaultdict(dict)
     ordering = {}
     symbol_mapping = {"+": 1, "-": -1}
 
-    # TODO: condense all filters into one big match
     if "username" in body:
-        filters.append(
-            {
-                "$match": {
-                    "user.name": {"$regex": Regex(body["username"], "i")},
-                }
-            }
-        )
+        filters["user.name"] = {"$regex": Regex(body["username"], "i")}
 
     # TODO: validate field types
     if "min" in body:
-        filters.append({"$match": {"total": {"$gte": float(body["min"])}}})
+        filters["total"]["$gte"] = float(body["min"])
 
     if "max" in body:
-        filters.append({"$match": {"total": {"$lte": float(body["max"])}}})
+        filters["total"]["$lte"] = float(body["max"])
 
     if "products" in body:
-        filters.append({"$match": {"items._id": {"$in": body["products"].split(",")}}})
+        filters["items._id"] = {"$in": body["products"].split(",")}
 
     if "ordering" in body:
         for ord in body["ordering"].split(","):
@@ -101,6 +95,8 @@ def filter_sales():
     page = int(body.get("page", 1))
     pagination = [{"$skip": count * (page - 1)}, {"$limit": count}]
 
-    query = collection.aggregate(BASE_QUERY + filters + [{"$sort": ordering}] + pagination)
+    query = collection.aggregate(
+        BASE_QUERY + [{"$match": filters}, {"$sort": ordering}] + pagination
+    )
 
     return jsonify(list(query))
