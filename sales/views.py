@@ -1,6 +1,7 @@
 from collections import defaultdict
 from datetime import datetime
-from bson import ObjectId, Regex
+from decimal import Decimal
+from bson import Decimal128, ObjectId, Regex
 from flask import Blueprint, current_app, jsonify, request
 import jwt
 
@@ -10,6 +11,8 @@ sales = Blueprint("sales", __name__)
 collection = db["orders_real_users"]
 customer_collection = db["users"]
 
+# TODO: swith to new collection
+# TODO: account for tax and shipping when calculating the total
 
 BASE_QUERY = [
     {
@@ -72,13 +75,54 @@ def register_sale():
                 algorithms=["HS256"],
             )
         except jwt.DecodeError:
-            return jsonify({"message": "Token inválido"}), 401
+            return jsonify({"message": "Invalid token"}), 400
 
         order["customer_id"] = ObjectId(payload["sub"])
     else:
         customer = body.get("customer")
-        # TODO: validate fields
+
+        if customer is None:
+            return jsonify({"message": "Customer data not provided"}), 400
+
+        required_fields = ["name", "surname", "addr", "cep", "email"]
+        allowed_fields = required_fields + ["city", "state", "tel"]
+
+        for f in required_fields:
+            if f not in customer:
+                return (
+                    jsonify({"message": f"Missing required field: 'customer.{f}'"}),
+                    400,
+                )
+
+        for f in customer:
+            if f not in allowed_fields:
+                return jsonify({"message": f"Unknown field: 'customer.{f}'"}), 400
+
+        # TODO: avoid anonymous purchases from using existing e-mails
         order["customer"] = customer
+
+    order["items"] = []  # TODO: validate items
+    for item in body["items"]:
+        item["_id"] = ObjectId(item["id"])
+        del item["id"]
+
+    order["tax"] = Decimal128(Decimal(body["tax"]))
+    order["shipping"] = Decimal128(Decimal(body["shipping"]))
+
+    if body["payment_method"] not in ["debit", "credit", "pix"]:
+        return jsonify(
+            {"message": f"Invalid payment method: '{body["payment_method"]}'"}, 400
+        )
+
+    if body["payment_method"] != "pix" and body.get("payment_provider") not in [
+        "visa",
+        "mastercard",
+        "americanexpress",
+    ]:
+        return jsonify(
+            {"message": f"Invalid payment provider: '{body.get("payment_provider")}'"},
+            400,
+        )
 
     print(order)
 
