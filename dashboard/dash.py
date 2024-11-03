@@ -138,34 +138,27 @@ def get_top_3(period):
     top_orders = [to_dict(order) for order in top_orders] if top_orders else []
     return jsonify(top_orders), 200
 
+
 @dashboard.route("/annual-sales", methods=["GET"])
 def get_annual_sales_data():
     start_of_year = datetime(datetime.now().year, 1, 1)
     monthly_sales_pipeline = [
-        {
-            "$match": {
-                "date": {"$gte": start_of_year}
-            }
-        },
-        {
-            "$unwind": "$items" 
-        },
+        {"$match": {"date": {"$gte": start_of_year}}},
+        {"$unwind": "$items"},
         {
             "$group": {
-                "_id": {"month": {"$month": "$date"}}, 
-                "total_sales": {
-                    "$sum": {
-                        "$multiply": ["$items.price", "$items.qty"] 
-                    }
-                }
+                "_id": {"month": {"$month": "$date"}},
+                "total_sales": {"$sum": {"$multiply": ["$items.price", "$items.qty"]}},
             }
         },
-        {
-            "$sort": {"_id.month": 1}
-        }
+        {"$sort": {"_id.month": 1}},
     ]
-    
+
     monthly_sales_data = list(order_collection.aggregate(monthly_sales_pipeline))
-    
-    sales = {month["_id"]["month"]: month.get("total_sales", 0) for month in monthly_sales_data if "_id" in month and "month" in month["_id"]}
+
+    sales = {
+        month["_id"]["month"]: month.get("total_sales", 0)
+        for month in monthly_sales_data
+        if "_id" in month and "month" in month["_id"]
+    }
     return jsonify(sales)

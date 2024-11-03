@@ -1,4 +1,5 @@
 from collections import defaultdict
+from datetime import date, datetime
 from typing import Any
 from bson import ObjectId, Regex
 from flask import Blueprint, jsonify, request
@@ -76,6 +77,15 @@ def filter_sales():
 
     if "products" in body:
         filters["items._id"] = {"$in": body["products"].split(",")}
+
+    if "status" in body:
+        filters["status"] = body["status"]
+
+    if "min_date" in body:
+        filters["date"]["$gte"] = datetime.fromtimestamp(int(body["min_date"]) // 1000)
+
+    if "max_date" in body:
+        filters["date"]["$lte"] = datetime.fromtimestamp(int(body["max_date"]) // 1000)
 
     if "ordering" in body:
         for ord in body["ordering"].split(","):
