@@ -125,14 +125,8 @@ def get_top_3(period):
 def get_annual_sales_data():
     start_of_year = datetime(datetime.now().year, 1, 1)
     monthly_sales_pipeline = [
-        {
-            "$match": {
-                "date": {"$gte": start_of_year}
-            }
-        },
-        {
-            "$unwind": "$items" 
-        },
+        {"$match": {"date": {"$gte": start_of_year}}},
+        {"$unwind": "$items"},
         {
             "$group": {
                 "_id": {"month": {"$month": "$date"}},
@@ -147,8 +141,12 @@ def get_annual_sales_data():
             "$sort": {"_id.month": 1} 
         }
     ]
-    
+
     monthly_sales_data = list(order_collection.aggregate(monthly_sales_pipeline))
-    
-    sales = {month["_id"]["month"]: month.get("total_sales", 0) for month in monthly_sales_data if "_id" in month and "month" in month["_id"]}
+
+    sales = {
+        month["_id"]["month"]: month.get("total_sales", 0)
+        for month in monthly_sales_data
+        if "_id" in month and "month" in month["_id"]
+    }
     return jsonify(sales)
