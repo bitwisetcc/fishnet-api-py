@@ -1,13 +1,14 @@
 from collections import defaultdict
-from datetime import date, datetime
-from typing import Any
+from datetime import datetime
 from bson import ObjectId, Regex
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
+import jwt
 
 from connections import db
 
 sales = Blueprint("sales", __name__)
 collection = db["orders_real_users"]
+customer_collection = db["users"]
 
 
 BASE_QUERY = [
@@ -55,6 +56,34 @@ BASE_QUERY = [
 def get_all_orders():
     query = collection.aggregate(BASE_QUERY)
     return jsonify(list(query))
+
+
+@sales.post("/new")
+def register_sale():
+    body = request.get_json()
+
+    order = {}
+
+    if "Authorization" in request.headers:
+        try:
+            payload = jwt.decode(
+                request.headers["Authorization"],
+                current_app.config["SECRET_KEY"],
+                algorithms=["HS256"],
+            )
+        except jwt.DecodeError:
+            return jsonify({"message": "Token inválido"}), 401
+
+        order["customer_id"] = ObjectId(payload["sub"])
+    else:
+        customer = body.get("customer")
+        # TODO: validate fields
+        order["customer"] = customer
+
+    print(order)
+
+    # TODO: decrement items available quantity
+    return jsonify({"message": "Order successfully recorded"}), 200
 
 
 @sales.get("/filter")
