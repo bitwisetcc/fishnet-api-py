@@ -8,10 +8,9 @@ import jwt
 from connections import db
 
 sales = Blueprint("sales", __name__)
-collection = db["orders_real_users"]
+collection = db["orders_payment_details"]
 customer_collection = db["users"]
 
-# TODO: swith to new collection
 # TODO: account for tax and shipping when calculating the total
 
 BASE_QUERY = [
@@ -22,7 +21,7 @@ BASE_QUERY = [
             "foreignField": "_id",
             "as": "user",
             "pipeline": [
-                {"$project": {"name": 1, "cpf": 1}},
+                {"$project": {"name": 1}},
                 {"$set": {"_id": {"$toString": "$_id"}}},
             ],
         }
@@ -42,12 +41,23 @@ BASE_QUERY = [
                     },
                 }
             },
+            "tax": {"$toDouble": "$tax"},
             "_id": {"$toString": "$_id"},
             "total": {
                 "$toDouble": {
-                    "$sum": {
-                        "$map": {"input": "$items", "as": "item", "in": "$$item.price"}
-                    }
+                    "$sum": [
+                        {
+                            "$sum": {
+                                "$map": {
+                                    "input": "$items",
+                                    "as": "item",
+                                    "in": "$$item.price",
+                                }
+                            }
+                        },
+                        {"$toDouble": "$tax"},
+                        {"$toDouble": "$shipping"},
+                    ]
                 }
             },
         }
@@ -101,33 +111,47 @@ def register_sale():
         # TODO: avoid anonymous purchases from using existing e-mails
         order["customer"] = customer
 
+    # TODO: use hashes for prices, or just hold a total. currently anyone can just pass any price they want, so you can buy 1000 Peixonautas for R$0.01 each
     order["items"] = []  # TODO: validate items
     for item in body["items"]:
         item["_id"] = ObjectId(item["id"])
         del item["id"]
+        order["items"].append(item)
 
-    order["tax"] = Decimal128(Decimal(body["tax"]))
-    order["shipping"] = Decimal128(Decimal(body["shipping"]))
+    order["tax"] = Decimal128(str(body["tax"]))
+    order["shipping"] = Decimal128(str(body["shipping"]))
+    order["shipping_provider"] = body.get("shipping", "Correios")
 
     if body["payment_method"] not in ["debit", "credit", "pix"]:
         return jsonify(
             {"message": f"Invalid payment method: '{body["payment_method"]}'"}, 400
         )
 
-    if body["payment_method"] != "pix" and body.get("payment_provider") not in [
-        "visa",
-        "mastercard",
-        "americanexpress",
-    ]:
-        return jsonify(
-            {"message": f"Invalid payment provider: '{body.get("payment_provider")}'"},
-            400,
-        )
+    order["payment_method"] = body["payment_method"]
 
-    print(order)
+    if body["payment_method"] != "pix":
+        if body.get("payment_provider", None) is None:
+            return jsonify(
+                {
+                    "message": "Missing field: 'payment_provider' required for card transactions"
+                },
+                400,
+            )
+        else:
+            order["payment_provider"] = body["payment_provider"]
+
+    order["status"] = body["status"]
+    order["date"] = datetime.now()
+
+    inserted_doc = collection.insert_one(order)
 
     # TODO: decrement items available quantity
-    return jsonify({"message": "Order successfully recorded"}), 200
+    return (
+        jsonify(
+            {"message": f"Order successfully recorded: {inserted_doc.inserted_id}"}
+        ),
+        200,
+    )
 
 
 @sales.get("/filter")
