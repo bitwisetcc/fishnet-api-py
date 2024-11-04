@@ -1,11 +1,11 @@
 from collections import defaultdict
 from datetime import datetime
-from decimal import Decimal
 from bson import Decimal128, ObjectId, Regex
 from flask import Blueprint, current_app, jsonify, request
 import jwt
 
 from connections import db
+from sales.validation import AnonymousUser, SaleItem
 
 sales = Blueprint("sales", __name__)
 collection = db["orders_payment_details"]
@@ -89,38 +89,27 @@ def register_sale():
 
         order["customer_id"] = ObjectId(payload["sub"])
     else:
-        customer = body.get("customer")
-
-        if customer is None:
-            return jsonify({"message": "Customer data not provided"}), 400
-
-        required_fields = ["name", "surname", "addr", "cep", "email"]
-        allowed_fields = required_fields + ["city", "state", "tel"]
-
-        for f in required_fields:
-            if f not in customer:
-                return (
-                    jsonify({"message": f"Missing required field: 'customer.{f}'"}),
-                    400,
-                )
-
-        for f in customer:
-            if f not in allowed_fields:
-                return jsonify({"message": f"Unknown field: 'customer.{f}'"}), 400
-
         # TODO: avoid anonymous purchases from using existing e-mails
-        order["customer"] = customer
+        try:
+            customer = AnonymousUser.from_dict(body.get("customer"))
+        except AssertionError as e:
+            return jsonify({"message": str(e)}), 400
+
+        order["customer"] = customer.to_json()
 
     # TODO: use hashes for prices, or just hold a total. currently anyone can just pass any price they want, so you can buy 1000 Peixonautas for R$0.01 each
-    order["items"] = []  # TODO: validate items
-    for item in body["items"]:
-        item["_id"] = ObjectId(item["id"])
-        del item["id"]
-        order["items"].append(item)
+    items = body.get("items")
+    if items is None or len(items) == 0:
+        return jsonify({"message": "The product cart is empty"}), 400
+
+    try:
+        order["items"] = [SaleItem.from_dict(item).to_json() for item in items]
+    except AssertionError as e:
+        return jsonify({"message": str(e)})
 
     order["tax"] = Decimal128(str(body["tax"]))
     order["shipping"] = Decimal128(str(body["shipping"]))
-    order["shipping_provider"] = body.get("shipping", "Correios")
+    order["shipping_provider"] = body.get("shipping_provider", "Correios")
 
     if body["payment_method"] not in ["debit", "credit", "pix"]:
         return jsonify(
