@@ -78,6 +78,13 @@ class SaleItem:
             "qty": self.qty,
         }
 
+    def to_bson(self) -> dict[str, str | float | int]:
+        return {
+            "_id": self.id,
+            "price": self.price,
+            "qty": self.qty,
+        }
+
 
 class PaymentMethod(Enum):
     DEBIT = "debit"
@@ -90,15 +97,18 @@ class SaleStatus(Enum):
     DONE = 1
     CANCELLED = 2
 
+    def __str__(self) -> str:
+        return self.value
+
 
 @dataclass
 class Sale:
-    items: list[SaleItem]  #
-    tax: Decimal128  #
-    shipping: Decimal128  #
-    shipping_provider: str  #
-    payment_method: PaymentMethod  #
-    status: SaleStatus  #
+    items: list[SaleItem]
+    tax: Decimal128
+    shipping: Decimal128
+    shipping_provider: str
+    payment_method: PaymentMethod
+    status: SaleStatus
     date: datetime
     payment_provider: Optional[str] = None
     customer: Optional[AnonymousUser] = None
@@ -109,7 +119,7 @@ class Sale:
         assert d.get("customer") or token, "Missing customer data"
 
         assert d.get("items") is not None and len(d["items"]) > 0, "The cart is empty"
-        _items = [SaleItem.from_dict(item).to_json() for item in d["items"]]
+        _items = [SaleItem.from_dict(item) for item in d["items"]]
 
         try:
             _tax = Decimal128(str(d.get("tax")))
@@ -160,3 +170,17 @@ class Sale:
             _customer,
             _customer_id,
         )
+
+    def to_bson(self) -> dict[str, Any]:
+        return {
+            "items": [item.to_bson() for item in self.items],
+            "tax": self.tax,
+            "shipping": self.shipping,
+            "shipping_provider": self.shipping_provider,
+            "payment_method": self.payment_method.value,
+            "status": self.status.value,
+            "date": self.date,
+            "payment_provider": self.payment_provider,
+            "customer": self.customer and self.customer.to_json(),
+            "customer_id": self.customer_id,
+        }

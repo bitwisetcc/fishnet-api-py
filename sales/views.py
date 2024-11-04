@@ -1,11 +1,11 @@
 from collections import defaultdict
 from datetime import datetime
-from bson import Decimal128, ObjectId, Regex
-from flask import Blueprint, current_app, jsonify, request
-import jwt
+
+from bson import Regex
+from flask import Blueprint, jsonify, request
 
 from connections import db
-from sales.validation import AnonymousUser, Sale, SaleItem
+from sales.validation import Sale
 
 sales = Blueprint("sales", __name__)
 collection = db["orders_payment_details"]
@@ -79,7 +79,7 @@ def register_sale():
     except (AssertionError, ValueError) as e:
         return jsonify({"message": str(e)}), 400
 
-    _id = collection.insert_one(sale).inserted_id
+    _id = collection.insert_one(sale.to_bson()).inserted_id
 
     return jsonify({"message": f"Order successfully recorded: {_id}"}), 200
 
