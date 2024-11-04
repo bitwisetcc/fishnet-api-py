@@ -41,6 +41,7 @@ BASE_QUERY = [
                 }
             },
             "tax": {"$toDouble": "$tax"},
+            "shipping": {"$toDouble": "$shipping"},
             "_id": {"$toString": "$_id"},
             "total": {
                 "$toDouble": {
