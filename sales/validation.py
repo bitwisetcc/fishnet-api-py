@@ -1,10 +1,12 @@
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Inexact
+from decimal import Inexact, InvalidOperation
 from enum import Enum
-from typing import Optional, Self
+from typing import Any, Optional, Self
 from bson import Decimal128, ObjectId
 from bson.errors import InvalidId
+from flask import current_app
+import jwt
 
 
 @dataclass
@@ -46,6 +48,8 @@ class AnonymousUser:
 
 @dataclass
 class SaleItem:
+    # TODO: use hashes for prices, or just hold a total. currently anyone can just pass any price they want, so you can buy 1000 Peixonautas for R$0.01 each
+    # TODO: decrement items available quantity
     id: ObjectId
     price: Decimal128
     qty: int
@@ -55,8 +59,7 @@ class SaleItem:
     @staticmethod
     def from_dict(d: dict[str, str | float | int]) -> Self:
         for field in SaleItem._required:
-            if field not in d:
-                raise AssertionError(f"Missing field '{field}' for SaleItem")
+            assert field in d, f"Missing field '{field}' for SaleItem"
 
         try:
             _id = ObjectId(d["id"])
@@ -88,13 +91,72 @@ class SaleStatus(Enum):
     CANCELLED = 2
 
 
+@dataclass
 class Sale:
-    customer: ObjectId | AnonymousUser
-    items: list[SaleItem]
-    tax: Decimal128
-    shipping: Decimal128
-    shipping_provider: str
-    payment_method: PaymentMethod
-    payment_provider: str | None
-    status: SaleStatus
+    items: list[SaleItem]  #
+    tax: Decimal128  #
+    shipping: Decimal128  #
+    shipping_provider: str  #
+    payment_method: PaymentMethod  #
+    status: SaleStatus  #
     date: datetime
+    payment_provider: Optional[str] = None
+    customer: Optional[AnonymousUser] = None
+    customer_id: Optional[ObjectId] = None
+
+    @staticmethod
+    def from_dict(d: dict[str, Any], token=None) -> Self:
+        assert d.get("customer") or token, "Missing customer data"
+
+        assert d.get("items") is not None and len(d["items"]) > 0, "The cart is empty"
+        _items = [SaleItem.from_dict(item).to_json() for item in d["items"]]
+
+        try:
+            _tax = Decimal128(str(d.get("tax")))
+            _shipping = Decimal128(str(d.get("shipping")))
+        except (InvalidOperation, Inexact) as e:
+            raise AssertionError("Failed cast to Decimal128: 'tax' or 'shipping'")
+
+        assert isinstance(d.get("shipping_provider"), str), "Invalid shipping_provider"
+
+        _payment_method = PaymentMethod(d.get("payment_method"))
+        assert (
+            _payment_method == PaymentMethod.PIX
+            or d.get("payment_provider") is not None
+        ), "Missing payment_provider"
+        assert not (
+            _payment_method == PaymentMethod.PIX
+            and d.get("payment_provider") is not None
+        ), "PIX payments should not have a payment_provider"
+
+        _customer_id = None
+        _customer = None
+
+        if token:
+            try:
+                payload = jwt.decode(
+                    token, current_app.config["SECRET_KEY"], algorithms=["HS256"]
+                )
+                _customer_id = ObjectId(payload.get("sub"))
+            except jwt.DecodeError:
+                raise AssertionError("Invalid auth token")
+            except InvalidId:
+                raise AssertionError("Invalid oid in auth token")
+        else:
+            # TODO: avoid anonymous purchases from using existing e-mails
+            _customer = AnonymousUser.from_dict(d.get("customer"))
+
+        # Vulnerabilities: ValueError for SaleStatus and PaymentMethod
+        return Sale(
+            _items,
+            _tax,
+            _shipping,
+            d.get("shipping_provider"),
+            PaymentMethod(d.get("payment_method")),
+            # TODO: translate database records to sale_status codes
+            SaleStatus(d.get("status")),
+            datetime.now(),
+            d.get("payment_provider"),
+            _customer,
+            _customer_id,
+        )

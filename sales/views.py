@@ -5,13 +5,12 @@ from flask import Blueprint, current_app, jsonify, request
 import jwt
 
 from connections import db
-from sales.validation import AnonymousUser, SaleItem
+from sales.validation import AnonymousUser, Sale, SaleItem
 
 sales = Blueprint("sales", __name__)
 collection = db["orders_payment_details"]
 customer_collection = db["users"]
 
-# TODO: account for tax and shipping when calculating the total
 
 BASE_QUERY = [
     {
@@ -75,72 +74,14 @@ def get_all_orders():
 def register_sale():
     body = request.get_json()
 
-    order = {}
-
-    if "Authorization" in request.headers:
-        try:
-            payload = jwt.decode(
-                request.headers["Authorization"],
-                current_app.config["SECRET_KEY"],
-                algorithms=["HS256"],
-            )
-        except jwt.DecodeError:
-            return jsonify({"message": "Invalid token"}), 400
-
-        order["customer_id"] = ObjectId(payload["sub"])
-    else:
-        # TODO: avoid anonymous purchases from using existing e-mails
-        try:
-            customer = AnonymousUser.from_dict(body.get("customer"))
-        except AssertionError as e:
-            return jsonify({"message": str(e)}), 400
-
-        order["customer"] = customer.to_json()
-
-    # TODO: use hashes for prices, or just hold a total. currently anyone can just pass any price they want, so you can buy 1000 Peixonautas for R$0.01 each
-    items = body.get("items")
-    if items is None or len(items) == 0:
-        return jsonify({"message": "The product cart is empty"}), 400
-
     try:
-        order["items"] = [SaleItem.from_dict(item).to_json() for item in items]
-    except AssertionError as e:
-        return jsonify({"message": str(e)})
+        sale = Sale.from_dict(body, request.headers.get("Authorization"))
+    except (AssertionError, ValueError) as e:
+        return jsonify({"message": str(e)}), 400
 
-    order["tax"] = Decimal128(str(body["tax"]))
-    order["shipping"] = Decimal128(str(body["shipping"]))
-    order["shipping_provider"] = body.get("shipping_provider", "Correios")
+    _id = collection.insert_one(sale).inserted_id
 
-    if body["payment_method"] not in ["debit", "credit", "pix"]:
-        return jsonify(
-            {"message": f"Invalid payment method: '{body["payment_method"]}'"}, 400
-        )
-
-    order["payment_method"] = body["payment_method"]
-
-    if body["payment_method"] != "pix":
-        if body.get("payment_provider", None) is None:
-            return jsonify(
-                {
-                    "message": "Missing field: 'payment_provider' required for card transactions"
-                },
-                400,
-            )
-        else:
-            order["payment_provider"] = body["payment_provider"]
-
-    order["status"] = body["status"]
-    order["date"] = datetime.now()
-
-    inserted_doc = collection.insert_one(order)
-
-    # TODO: decrement items available quantity
-    return (
-        jsonify(
-            {"message": f"Order successfully recorded: {inserted_doc.inserted_id}"}
-        ),
-        200,
-    )
+    return jsonify({"message": f"Order successfully recorded: {_id}"}), 200
 
 
 @sales.get("/filter")
