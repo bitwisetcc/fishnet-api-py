@@ -8,7 +8,7 @@ from connections import db
 from sales.validation import Sale
 
 sales = Blueprint("sales", __name__)
-collection = db["orders_payment_details"]
+collection = db["orders"]
 customer_collection = db["users"]
 
 
@@ -25,7 +25,7 @@ BASE_QUERY = [
             ],
         }
     },
-    {"$unset": ["id_customer"]},
+    {"$unset": ["customer_id"]},
     {
         "$set": {
             "user": {"$arrayElemAt": ["$user", 0]},
