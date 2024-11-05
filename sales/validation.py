@@ -8,6 +8,10 @@ from bson.errors import InvalidId
 from flask import current_app
 import jwt
 
+from connections import db
+
+product_collection = db["teste_species"]
+
 
 @dataclass
 class AnonymousUser:
@@ -48,26 +52,23 @@ class AnonymousUser:
 
 @dataclass
 class SaleItem:
-    # TODO: use hashes for prices, or just hold a total. currently anyone can just pass any price they want, so you can buy 1000 Peixonautas for R$0.01 each
     # TODO: decrement items available quantity
     id: ObjectId
     price: Decimal128
     qty: int
 
-    _required = ["id", "price", "qty"]
+    _required = ["id", "qty"]
 
     @staticmethod
-    def from_dict(d: dict[str, str | float | int]) -> Self:
+    def from_dict(d: dict[str, str | int]) -> Self:
         for field in SaleItem._required:
             assert field in d, f"Missing field '{field}' for SaleItem"
 
         try:
             _id = ObjectId(d["id"])
-            _price = Decimal128(str(d["price"]))
+            _price = product_collection.find_one({"_id": _id})["price"]
         except InvalidId:
             raise AssertionError(f"Invalid oid for SaleItem: '{d['id']}'")
-        except Inexact:
-            raise AssertionError(f"Failed price to cast to Decimal128: {d['qty']}")
 
         return SaleItem(_id, _price, d["qty"])
 
@@ -163,7 +164,6 @@ class Sale:
             _shipping,
             d.get("shipping_provider"),
             PaymentMethod(d.get("payment_method")),
-            # TODO: translate database records to sale_status codes
             SaleStatus(d.get("status")),
             datetime.now(),
             d.get("payment_provider"),
