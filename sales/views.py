@@ -1,13 +1,15 @@
 from collections import defaultdict
-from datetime import date, datetime
-from typing import Any
-from bson import ObjectId, Regex
+from datetime import datetime
+
+from bson import Regex
 from flask import Blueprint, jsonify, request
 
 from connections import db
+from sales.validation import Sale
 
 sales = Blueprint("sales", __name__)
-collection = db["orders_real_users"]
+collection = db["orders"]
+customer_collection = db["users"]
 
 
 BASE_QUERY = [
@@ -18,12 +20,12 @@ BASE_QUERY = [
             "foreignField": "_id",
             "as": "user",
             "pipeline": [
-                {"$project": {"name": 1, "cpf": 1}},
+                {"$project": {"name": 1}},
                 {"$set": {"_id": {"$toString": "$_id"}}},
             ],
         }
     },
-    {"$unset": ["id_customer"]},
+    {"$unset": ["customer_id"]},
     {
         "$set": {
             "user": {"$arrayElemAt": ["$user", 0]},
@@ -38,12 +40,24 @@ BASE_QUERY = [
                     },
                 }
             },
+            "tax": {"$toDouble": "$tax"},
+            "shipping": {"$toDouble": "$shipping"},
             "_id": {"$toString": "$_id"},
             "total": {
                 "$toDouble": {
-                    "$sum": {
-                        "$map": {"input": "$items", "as": "item", "in": "$$item.price"}
-                    }
+                    "$sum": [
+                        {
+                            "$sum": {
+                                "$map": {
+                                    "input": "$items",
+                                    "as": "item",
+                                    "in": "$$item.price",
+                                }
+                            }
+                        },
+                        {"$toDouble": "$tax"},
+                        {"$toDouble": "$shipping"},
+                    ]
                 }
             },
         }
@@ -55,6 +69,20 @@ BASE_QUERY = [
 def get_all_orders():
     query = collection.aggregate(BASE_QUERY)
     return jsonify(list(query))
+
+
+@sales.post("/new")
+def register_sale():
+    body = request.get_json()
+
+    try:
+        sale = Sale.from_dict(body, request.headers.get("Authorization"))
+    except (AssertionError, ValueError) as e:
+        return jsonify({"message": str(e)}), 400
+
+    _id = collection.insert_one(sale.to_bson()).inserted_id
+
+    return jsonify({"message": f"Order successfully recorded: {_id}"}), 200
 
 
 @sales.get("/filter")
