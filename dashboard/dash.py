@@ -1,16 +1,17 @@
 from flask import Blueprint, jsonify
 from datetime import datetime, timedelta
 from connections import db
+from bson.decimal128 import Decimal128
 
 # Definindo o Blueprint
 dashboard = Blueprint("dashboard", __name__)
 
 # Coleções
-order_collection = db['order_real_users']
-client_collection = db['client']
+order_collection = db['orders']
+client_collection = db['users']
 
 def calculate_order_total(order):
-    return sum(item['price'] * item['qty'] for item in order.get('items', []))
+    return sum(float(item['price'].to_decimal()) * item['qty'] for item in order.get('items', []))
 
 # Rota para relatório mensal
 @dashboard.route('/order', methods=['GET'])
@@ -24,7 +25,7 @@ def order():
     vendas_do_mes = list(order_collection.find({
         "date": {"$gte": primeiro_dia_do_mes}
     }))
-    total_vendas = sum(calculate_order_total(order) for order in vendas_do_mes)
+    total_vendas = round(sum(calculate_order_total(order) for order in vendas_do_mes), 2)
 
     # Clientes atingidos (clientes que fizeram pedidos este mês)
     clientes_atingidos = set(order.get('id_costumer') for order in vendas_do_mes)
@@ -144,8 +145,13 @@ def get_annual_sales_data():
 
     monthly_sales_data = list(order_collection.aggregate(monthly_sales_pipeline))
 
+    def convert_decimal(value):
+        if isinstance(value, Decimal128):
+            return float(value.to_decimal())
+        return value
+    
     sales = {
-        month["_id"]["month"]: month.get("total_sales", 0)
+        month["_id"]["month"]: convert_decimal(month.get("total_sales", 0))
         for month in monthly_sales_data
         if "_id" in month and "month" in month["_id"]
     }
