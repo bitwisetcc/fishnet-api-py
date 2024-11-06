@@ -16,7 +16,7 @@ BASE_QUERY = [
     {
         "$lookup": {
             "from": "users",
-            "localField": "id_customer",
+            "localField": "customer_id",
             "foreignField": "_id",
             "as": "user",
             "pipeline": [
@@ -28,7 +28,8 @@ BASE_QUERY = [
     {"$unset": ["customer_id"]},
     {
         "$set": {
-            "user": {"$arrayElemAt": ["$user", 0]},
+            "temp": "$customer",
+            "customer": {"$arrayElemAt": ["$user", 0]},
             "items": {
                 "$map": {
                     "input": "$items",
@@ -62,6 +63,8 @@ BASE_QUERY = [
             },
         }
     },
+    {"$set": {"customer": {"$ifNull": ["$customer", "$temp", "$customer"]}}},
+    {"$unset": ["temp", "user"]},
 ]
 
 
@@ -94,7 +97,7 @@ def filter_sales():
     symbol_mapping = {"+": 1, "-": -1}
 
     if "username" in body:
-        filters["user.name"] = {"$regex": Regex(body["username"], "i")}
+        filters["customer.name"] = {"$regex": Regex(body["username"], "i")}
 
     # TODO: validate field types
     if "min" in body:
