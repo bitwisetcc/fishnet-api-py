@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify
 from datetime import datetime, timedelta
 from connections import db
 from bson.decimal128 import Decimal128
+from bson import ObjectId
 
 # Definindo o Blueprint
 dashboard = Blueprint("dashboard", __name__)
@@ -11,9 +12,52 @@ order_collection = db['orders']
 client_collection = db['users']
 
 def calculate_order_total(order):
-    return sum(float(item['price'].to_decimal()) * item['qty'] for item in order.get('items', []))
+    total = 0
+    for item in order.get('items', []):
+        price = item.get('price', 0)
+        qty = item.get('qty', 0)
 
-# Rota para relatório mensal
+        # Converte Decimal128 para float, se necessário
+        if isinstance(price, Decimal128):
+            price = float(price.to_decimal())
+
+        total += price * qty
+
+    return round(total, 2)
+
+def to_dict(order):
+    customer_data = order.get("customer", {})
+    order_total = order.get("order_total", 0)
+    
+    # Converte order_total se for Decimal128
+    if isinstance(order_total, Decimal128):
+        order_total = float(order_total.to_decimal())
+
+    return {
+        "_id": str(order.get("_id")),  # Converte ObjectId para string
+        "customer_id": str(customer_data.get("_id", "")) if "_id" in customer_data else "",
+        "customer_name": customer_data.get("name", ""),
+        "order_total": round(order_total, 2),
+        "date": order.get("date").isoformat() if order.get("date") else "",
+        "status": order.get("status", "")
+    }
+
+# Função para serializar dados JSON de maneira segura
+def serialize_document(doc):
+    """Converte um documento MongoDB em um dicionário serializável."""
+    if isinstance(doc, list):
+        return [serialize_document(item) for item in doc]
+    elif isinstance(doc, dict):
+        return {key: serialize_document(value) for key, value in doc.items()}
+    elif isinstance(doc, ObjectId):
+        return str(doc)
+    elif isinstance(doc, Decimal128):
+        return float(doc.to_decimal())
+    elif isinstance(doc, datetime):
+        return doc.isoformat()
+    else:
+        return doc
+
 @dashboard.route('/order', methods=['GET'])
 def order():
     hoje = datetime.now()
@@ -25,12 +69,13 @@ def order():
     vendas_do_mes = list(order_collection.find({
         "date": {"$gte": primeiro_dia_do_mes}
     }))
+
     total_vendas = round(sum(calculate_order_total(order) for order in vendas_do_mes), 2)
 
-    # Clientes atingidos (clientes que fizeram pedidos este mês)
-    clientes_atingidos = set(order.get('id_costumer') for order in vendas_do_mes)
+    # Clientes atingidos
+    clientes_atingidos = set(order.get('customer', {}).get('_id') for order in vendas_do_mes)
 
-    # Compras realizadas (total de pedidos)
+    # Compras realizadas
     total_compras = len(vendas_do_mes)
 
     # Vendas do mês anterior
@@ -39,12 +84,11 @@ def order():
     }))
     total_vendas_ultimo_mes = sum(calculate_order_total(order) for order in vendas_ultimo_mes)
 
-    # Aumento em porcentagem em relação ao último mês
+    # Aumento percentual
     aumento_em_porcentagem = 0.0
     if total_vendas_ultimo_mes > 0:
         aumento_em_porcentagem = ((total_vendas - total_vendas_ultimo_mes) / total_vendas_ultimo_mes) * 100
 
-    # Montando o relatório
     relatorio = {
         "total_vendas": total_vendas,
         "aumento_em_porcentagem": aumento_em_porcentagem,
@@ -52,22 +96,13 @@ def order():
         "total_compras_realizadas": total_compras,
     }
 
-    return jsonify(relatorio)
-
-def to_dict(order):
-    return {
-        **order,
-        "_id": str(order.get("_id")),
-        "customer": str(order.get("id_customer", "")),
-        "order_total": calculate_order_total(order),
-        "date": order.get("date").isoformat() if order.get("date") else "",
-        "status": str(order.get("status", ""))
-    }
+    return jsonify(serialize_document(relatorio))
 
 @dashboard.route('/order/top3/<string:period>', methods=['GET'])
 def get_top_3(period):
     hoje = datetime.now()
-    
+
+    # Definindo o intervalo de datas
     if period == "Hoje":
         start_date = hoje.replace(hour=0, minute=0, second=0, microsecond=0)
         end_date = hoje.replace(hour=23, minute=59, second=59, microsecond=999999)
@@ -95,64 +130,48 @@ def get_top_3(period):
         return jsonify({"error": "Período inválido"}), 400
 
     top_orders_pipeline = [
-        {
-            "$match": {
-                "date": {"$gte": start_date, "$lt": end_date}
-            }
-        },
-        {
-            "$addFields": {
-                "order_total": {"$sum": {"$map": {
-                    "input": "$items",
-                    "as": "item",
-                    "in": {"$multiply": ["$$item.price", "$$item.qty"]}
-                }}}
-            }
-        },
-        {
-            "$sort": {
-                "order_total": -1
-            }
-        },
-        {
-            "$limit": 3
-        }
+        {"$match": {"date": {"$gte": start_date, "$lt": end_date}}},
+        {"$addFields": {"order_total": {
+            "$sum": {"$map": {
+                "input": {"$cond": {"if": {"$isArray": "$items"}, "then": "$items", "else": []}},
+                "as": "item",
+                "in": {"$multiply": ["$$item.price", "$$item.qty"]}
+            }}
+        }}},
+        {"$sort": {"order_total": -1}},
+        {"$limit": 3}
     ]
-    
+
     top_orders = list(order_collection.aggregate(top_orders_pipeline))
-    return jsonify([to_dict(order) for order in top_orders]), 200
+    return jsonify(serialize_document(top_orders)), 200
 
 @dashboard.route('/annual-sales', methods=['GET'])
 def get_annual_sales_data():
     start_of_year = datetime(datetime.now().year, 1, 1)
     monthly_sales_pipeline = [
-        {"$match": {"date": {"$gte": start_of_year}}},
-        {"$unwind": "$items"},
-        {
-            "$group": {
-                "_id": {"month": {"$month": "$date"}},
-                "total_sales": {
-                    "$sum": {
-                        "$multiply": ["$items.price", "$items.qty"] 
-                    }
+    {"$match": {"date": {"$gte": start_of_year}}},
+    {"$unwind": "$items"},
+    {
+        "$group": {
+            "_id": {"month": {"$month": "$date"}},
+            "total_sales": {
+                "$sum": {
+                    "$multiply": [
+                        {"$toDouble": "$items.price"},  # Converte para double
+                        "$items.qty"
+                    ]
                 }
             }
-        },
-        {
-            "$sort": {"_id.month": 1} 
         }
-    ]
+    },
+    {"$sort": {"_id.month": 1}}
+]
+
 
     monthly_sales_data = list(order_collection.aggregate(monthly_sales_pipeline))
 
-    def convert_decimal(value):
-        if isinstance(value, Decimal128):
-            return float(value.to_decimal())
-        return value
-    
     sales = {
-        month["_id"]["month"]: convert_decimal(month.get("total_sales", 0))
+        month["_id"]["month"]: float(month.get("total_sales", 0))
         for month in monthly_sales_data
-        if "_id" in month and "month" in month["_id"]
     }
     return jsonify(sales)
