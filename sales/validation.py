@@ -140,6 +140,26 @@ class Sale:
             and d.get("payment_provider") is not None
         ), "PIX payments should not have a payment_provider"
 
+         _payment_method = PaymentMethod(d.get("payment_method"))
+        assert (
+            _payment_method == PaymentMethod.MASTERCARD
+            or d.get("payment_provider") is not None
+        ), "Missing payment_provider"
+        assert not (
+            _payment_method == PaymentMethod.MASTERCARD
+            and d.get("payment_provider") is not None
+        ), "MASTERCARD payments should not have a payment_provider"
+
+         _payment_method = PaymentMethod(d.get("payment_method"))
+        assert (
+            _payment_method == PaymentMethod.VISA
+            or d.get("payment_provider") is not None
+        ), "Missing payment_provider"
+        assert not (
+            _payment_method == PaymentMethod.VISA
+            and d.get("payment_provider") is not None
+        ), "VISA payments should not have a payment_provider"
+
         _customer_id = None
         _customer = None
 
