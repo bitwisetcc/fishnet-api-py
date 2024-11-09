@@ -88,8 +88,8 @@ class SaleItem:
 
 
 class PaymentMethod(Enum):
-    DEBIT = "debit"
-    CREDIT = "credit"
+    MASTERCARD = "mastercard"
+    VISA = "visa"
     PIX = "pix"
 
 
