@@ -139,11 +139,27 @@ def get_top_3(period):
             }}
         }}},
         {"$sort": {"order_total": -1}},
-        {"$limit": 3}
+        {"$limit": 3},
+        {
+            "$lookup": {
+                "from": "users",  # Nome da coleção de clientes
+                "localField": "customer_id",  # Campo local em orders
+                "foreignField": "_id",  # Campo correspondente em users
+                "as": "customer_info"
+            }
+        },
+        {
+            "$addFields": {
+                "customer_name": {"$arrayElemAt": ["$customer_info.name", 0]},  # Nome do cliente
+                "seller_name": {"$arrayElemAt": ["$customer_info.surname", 0]}  # Nome do vendedor ou outro campo caso se aplique
+            }
+        },
+        {"$project": {"customer_info": 0}}
     ]
 
     top_orders = list(order_collection.aggregate(top_orders_pipeline))
     return jsonify(serialize_document(top_orders)), 200
+
 
 @dashboard.route('/annual-sales', methods=['GET'])
 def get_annual_sales_data():
