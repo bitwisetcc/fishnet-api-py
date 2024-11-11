@@ -72,14 +72,8 @@ class SaleItem:
 
         return SaleItem(_id, _price, d["qty"])
 
-    def to_json(self) -> dict[str, str | float | int]:
-        return {
-            "_id": str(self.id),
-            "price": float(self.price.to_decimal()),
-            "qty": self.qty,
-        }
-
-    def to_bson(self) -> dict[str, str | float | int]:
+    # TODO URGENT: ensure item prices are Decimal128
+    def to_bson(self) -> dict[str, str | float | Decimal128]:
         return {
             "_id": self.id,
             "price": self.price,

@@ -52,7 +52,7 @@ BASE_QUERY = [
                                 "$map": {
                                     "input": "$items",
                                     "as": "item",
-                                    "in": "$$item.price",
+                                    "in": {"$multiply": ["$$item.price", "$$item.qty"]},
                                 }
                             }
                         },
@@ -85,7 +85,7 @@ def register_sale():
 
     _id = collection.insert_one(sale.to_bson()).inserted_id
 
-    return jsonify({"message": f"Order successfully recorded: {_id}"}), 200
+    return jsonify({"message": "Success", "inserted_id": str(_id)}), 200
 
 
 @sales.get("/filter")
