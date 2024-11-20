@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import datetime
+from math import ceil
 
 from bson import Regex
 from flask import Blueprint, jsonify, request
@@ -120,7 +121,6 @@ def filter_sales():
 
     if "ordering" in body:
         for ord in body["ordering"].split(","):
-            print(body)
             key = ord[1:]
             direction = symbol_mapping.get(ord[0])
 
@@ -140,4 +140,13 @@ def filter_sales():
         BASE_QUERY + [{"$match": filters}, {"$sort": ordering}] + pagination
     )
 
-    return jsonify(list(query))
+    full_count = collection.aggregate(
+        BASE_QUERY
+        + [
+            {"$match": filters},
+            {"$sort": ordering},
+            {"$group": {"_id": None, "count": {"$sum": 1}}},
+        ]
+    ).next()["count"]
+
+    return jsonify({"match": list(query), "page_count": ceil(full_count / count)})
