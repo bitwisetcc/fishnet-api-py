@@ -4,6 +4,7 @@ from math import ceil
 
 from bson import Regex
 from flask import Blueprint, jsonify, request
+import pymongo
 
 from connections import db
 from sales.validation import Sale
@@ -95,7 +96,7 @@ def filter_sales():
 
     filters = defaultdict(dict)
     ordering = {}
-    symbol_mapping = {"+": 1, "-": -1}
+    symbol_mapping = {"+": pymongo.ASCENDING, "-": pymongo.DESCENDING}
 
     if "username" in body:
         filters["customer.name"] = {"$regex": Regex(body["username"], "i")}
@@ -130,7 +131,7 @@ def filter_sales():
                 return jsonify({"message": f"Invalid ordering '{ord}'"}), 400
 
     if not ordering:
-        ordering["_id"] = 1
+        ordering["_id"] = pymongo.ASCENDING
 
     count = int(body.get("count", 20))
     page = int(body.get("page", 1))

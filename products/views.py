@@ -1,5 +1,7 @@
+from math import ceil
 from bson import Decimal128, ObjectId
 from flask import Blueprint, jsonify, request
+import pymongo
 
 from connections import db
 
@@ -152,24 +154,15 @@ def get_itens_by_filter():
             sort_criteria.append(("price", 1))  # Ordena por preço crescente
         elif ordem == "decrescente":
             sort_criteria.append(("price", -1))  # Ordena por preço decrescente
+    else:
+        sort_criteria = [("_id", pymongo.ASCENDING)]
 
     count = int(request.args.get("count", 20))
     page = int(request.args.get("page", 1))
 
-    if sort_criteria:
-        itens = [
-            to_dict(doc)
-            for doc in collection.find(final_filter)
-            .sort(sort_criteria)
-            .skip(count * (page - 1))
-            .limit(count)
-        ]
-    else:
-        itens = [
-            to_dict(doc)
-            for doc in collection.find(final_filter)
-            .skip(count * (page - 1))
-            .limit(count)
-        ]
+    query = collection.find(final_filter).sort(sort_criteria)
+    total = collection.count_documents(final_filter)
 
-    return jsonify(itens)
+    itens = [to_dict(doc) for doc in query.skip(count * (page - 1)).limit(count)]
+
+    return jsonify({"match": itens, "page_count": ceil(total / count)})
