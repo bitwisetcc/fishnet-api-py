@@ -1,15 +1,17 @@
 from collections import defaultdict
 from datetime import datetime
+from math import ceil
 
 from bson import Regex
 from flask import Blueprint, jsonify, request
+import pymongo
 
 from connections import db
 from sales.validation import Sale
 
 sales = Blueprint("sales", __name__)
-collection = db["orders"]
-customer_collection = db["users"]
+COLLECTION = db["orders"]
+CUSTOMERS = db["users"]
 
 
 BASE_QUERY = [
@@ -70,7 +72,7 @@ BASE_QUERY = [
 
 @sales.get("/")
 def get_all_orders():
-    query = collection.aggregate(BASE_QUERY)
+    query = COLLECTION.aggregate(BASE_QUERY)
     return jsonify(list(query))
 
 
@@ -83,7 +85,7 @@ def register_sale():
     except (AssertionError, ValueError) as e:
         return jsonify({"message": str(e)}), 400
 
-    _id = collection.insert_one(sale.to_bson()).inserted_id
+    _id = COLLECTION.insert_one(sale.to_bson()).inserted_id
 
     return jsonify({"message": "Success", "inserted_id": str(_id)}), 200
 
@@ -94,7 +96,7 @@ def filter_sales():
 
     filters = defaultdict(dict)
     ordering = {}
-    symbol_mapping = {"+": 1, "-": -1}
+    symbol_mapping = {"+": pymongo.ASCENDING, "-": pymongo.DESCENDING}
 
     if "username" in body:
         filters["customer.name"] = {"$regex": Regex(body["username"], "i")}
@@ -120,7 +122,6 @@ def filter_sales():
 
     if "ordering" in body:
         for ord in body["ordering"].split(","):
-            print(body)
             key = ord[1:]
             direction = symbol_mapping.get(ord[0])
 
@@ -130,14 +131,23 @@ def filter_sales():
                 return jsonify({"message": f"Invalid ordering '{ord}'"}), 400
 
     if not ordering:
-        ordering["_id"] = 1
+        ordering["_id"] = pymongo.ASCENDING
 
     count = int(body.get("count", 20))
     page = int(body.get("page", 1))
     pagination = [{"$skip": count * (page - 1)}, {"$limit": count}]
 
-    query = collection.aggregate(
+    query = COLLECTION.aggregate(
         BASE_QUERY + [{"$match": filters}, {"$sort": ordering}] + pagination
     )
 
-    return jsonify(list(query))
+    full_count = COLLECTION.aggregate(
+        BASE_QUERY
+        + [
+            {"$match": filters},
+            {"$sort": ordering},
+            {"$group": {"_id": None, "count": {"$sum": 1}}},
+        ]
+    ).next()["count"]
+
+    return jsonify({"match": list(query), "page_count": ceil(full_count / count)})
