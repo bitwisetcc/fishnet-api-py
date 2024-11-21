@@ -1,8 +1,11 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, send_file
 from datetime import datetime, timedelta
 from connections import db
 from bson.decimal128 import Decimal128
 from bson import ObjectId
+import bson
+import io
+from fpdf import FPDF
 
 # Definindo o Blueprint
 dashboard = Blueprint("dashboard", __name__)
@@ -191,3 +194,72 @@ def get_annual_sales_data():
         for month in monthly_sales_data
     }
     return jsonify(sales)
+
+@dashboard.route('/backup', methods=['GET'])
+def backup_data():
+    try:
+        sales_data = list(order_collection.find())
+        products_data = list(db['products'].find())
+        backup_content = {
+            'sales': sales_data,
+            'products': products_data
+        }
+        bson_data = bson.encode(backup_content)
+        return send_file(
+            io.BytesIO(bson_data),
+            mimetype='application/octet-stream',
+            as_attachment=True,
+            download_name='backup_dados.bson'
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+import tempfile
+import os
+
+@dashboard.route('/export', methods=['GET'])
+def export_data():
+    try:
+        # Buscar dados de pedidos
+        orders = list(order_collection.find())
+
+        if not orders:
+            raise ValueError("Nenhuma venda encontrada para exportar.")
+
+        # Criar o PDF
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+        pdf.set_font('Arial', size=12)
+        pdf.cell(200, 10, txt="Relatório de Vendas", ln=True, align='C')
+
+        for order in orders:
+            order_total = calculate_order_total(order)
+            pdf.ln(10)
+            pdf.cell(0, 10, f"ID: {order.get('_id', '')}", ln=True)
+            pdf.cell(0, 10, f"Cliente: {order.get('customer', {}).get('name', 'Não informado')}", ln=True)
+            pdf.cell(0, 10, f"Data: {order.get('date').strftime('%d/%m/%Y') if order.get('date') else 'Não informado'}", ln=True)
+            pdf.cell(0, 10, f"Total: R$ {order_total:.2f}", ln=True)
+
+        # Criar um arquivo temporário
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            pdf.output(temp_file.name)
+            temp_file_path = temp_file.name
+
+        # Enviar o arquivo para o cliente
+        return send_file(
+            temp_file_path,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name='relatorio_vendas.pdf'
+        )
+    except Exception as e:
+        print(f"Erro ao exportar dados: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        # Remover o arquivo temporário após o envio
+        try:
+            if 'temp_file_path' in locals() and os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
+        except Exception as cleanup_error:
+            print(f"Erro ao limpar arquivo temporário: {cleanup_error}")
