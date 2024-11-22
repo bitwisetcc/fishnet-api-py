@@ -1,7 +1,6 @@
-from datetime import datetime
 import os
 import random
-from flask import Blueprint, jsonify, request, send_file
+from flask import Blueprint, jsonify, send_file
 from openpyxl import Workbook
 from connections import db
 

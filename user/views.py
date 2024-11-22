@@ -1,7 +1,6 @@
 from typing import Any
 from bson import ObjectId
 from flask import Blueprint, jsonify, request
-from flask_pydantic import validate
 
 from auth.views import login_required
 from connections import db
@@ -40,7 +39,6 @@ def get_user_by_id(id):
 
 
 @users.put("/<id>")
-@validate()
 def update_user(id):
     final_user = collection.find_one({"_id": ObjectId(id)})
 
