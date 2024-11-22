@@ -96,7 +96,6 @@ def filter_sales():
 
     filters = defaultdict(dict)
     ordering = {}
-    symbol_mapping = {"+": pymongo.ASCENDING, "-": pymongo.DESCENDING}
 
     if "username" in body:
         filters["customer.name"] = {"$regex": Regex(body["username"], "i")}
@@ -121,11 +120,12 @@ def filter_sales():
         filters["date"]["$lte"] = datetime.fromtimestamp(int(body["max_date"]) // 1000)
 
     if "ordering" in body:
+        symbol_mapping = {"+": pymongo.ASCENDING, "-": pymongo.DESCENDING}
         for ord in body["ordering"].split(","):
             key = ord[1:]
             direction = symbol_mapping.get(ord[0])
 
-            if key in ["total", "date", "user.name"] and direction is not None:
+            if key in ["total", "date", "customer.name"] and direction is not None:
                 ordering[key] = direction
             else:
                 return jsonify({"message": f"Invalid ordering '{ord}'"}), 400
