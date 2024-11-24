@@ -111,7 +111,7 @@ def filter_sales():
     if "username" in body:
         filters["customer.name"] = {"$regex": Regex(body["username"], "i")}
 
-    if "payement_method" in body:
+    if "payment_method" in body:
         filters["payment_method"] = {"$regex": Regex(body["payement_method"], "i")}
 
     if "status" in body:
