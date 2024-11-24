@@ -8,6 +8,7 @@ import pymongo
 
 from connections import db
 from sales.validation import Sale
+from datetime import datetime
 
 sales = Blueprint("sales", __name__)
 COLLECTION = db["orders"]
@@ -89,6 +90,16 @@ def register_sale():
 
     return jsonify({"message": "Success", "inserted_id": str(_id)}), 200
 
+def parse_date(date_str):
+    try:
+        # Tentar converter a data no formato ISO 8601 (exemplo: "2023-11-24")
+        return datetime.fromisoformat(date_str)
+    except ValueError:
+        # Se não for nesse formato, tentar como timestamp em milissegundos
+        try:
+            return datetime.fromtimestamp(int(date_str) // 1000)
+        except ValueError:
+            raise ValueError(f"Invalid date format: {date_str}")
 
 @sales.get("/filter")
 def filter_sales():
@@ -100,24 +111,36 @@ def filter_sales():
     if "username" in body:
         filters["customer.name"] = {"$regex": Regex(body["username"], "i")}
 
-    # TODO: validate field types
-    if "min" in body:
-        filters["total"]["$gte"] = float(body["min"])
+    if "payement_method" in body:
+        filters["payment_method"] = {"$regex": Regex(body["payement_method"], "i")}
 
-    if "max" in body:
-        filters["total"]["$lte"] = float(body["max"])
+    if "status" in body:
+       try:
+           filters["status"] = int(body["status"])
+       except ValueError:
+           return jsonify({"message": "Invalid 'status' value"}), 400
+
+    if "min_price" in body:
+        filters["total"]["$gte"] = float(body["min_price"])
+
+    if "max_price" in body:
+        filters["total"]["$lte"] = float(body["max_price"])
+
 
     if "products" in body:
         filters["items._id"] = {"$in": body["products"].split(",")}
 
-    if "status" in body:
-        filters["status"] = body["status"]
-
     if "min_date" in body:
-        filters["date"]["$gte"] = datetime.fromtimestamp(int(body["min_date"]) // 1000)
+        try:
+            filters["date"]["$gte"] = parse_date(body["min_date"])
+        except ValueError as e:
+            return jsonify({"message": str(e)}), 400
 
     if "max_date" in body:
-        filters["date"]["$lte"] = datetime.fromtimestamp(int(body["max_date"]) // 1000)
+        try:
+            filters["date"]["$lte"] = parse_date(body["max_date"])
+        except ValueError as e:
+            return jsonify({"message": str(e)}), 400
 
     if "ordering" in body:
         symbol_mapping = {"+": pymongo.ASCENDING, "-": pymongo.DESCENDING}
@@ -141,13 +164,22 @@ def filter_sales():
         BASE_QUERY + [{"$match": filters}, {"$sort": ordering}] + pagination
     )
 
-    full_count = COLLECTION.aggregate(
+    full_count_result = COLLECTION.aggregate(
         BASE_QUERY
         + [
             {"$match": filters},
             {"$sort": ordering},
             {"$group": {"_id": None, "count": {"$sum": 1}}},
         ]
-    ).next()["count"]
+    )
 
+    full_count = 0
+    for result in full_count_result:
+        full_count = result.get("count", 0)  # Usar 0 como valor padrão caso 'count' não exista
+
+    # Se não houver nenhum resultado, a contagem de páginas deve ser zero
+    if full_count == 0:
+        return jsonify({"match": [], "page_count": 0})
+
+    # Retornar o número total de páginas
     return jsonify({"match": list(query), "page_count": ceil(full_count / count)})
