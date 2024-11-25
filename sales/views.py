@@ -23,7 +23,7 @@ BASE_QUERY = [
             "foreignField": "_id",
             "as": "user",
             "pipeline": [
-                {"$project": {"name": 1}},
+                {"$project": {"name": 1, "email": 1}},
                 {"$set": {"_id": {"$toString": "$_id"}}},
             ],
         }
