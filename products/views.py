@@ -7,6 +7,7 @@ from connections import db
 
 products = Blueprint("products", __name__)
 collection = db["teste_species"]
+orders_collection = db["order_real_users"]
 
 
 # TODO: upload images to some storage bucket and store the URLs
@@ -166,3 +167,27 @@ def get_itens_by_filter():
     itens = [to_dict(doc) for doc in query.skip(count * (page - 1)).limit(count)]
 
     return jsonify({"match": itens, "page_count": ceil(total / count)})
+
+@products.get("/getotal")
+def get_total():
+    product_id = request.args.get("product_id")
+    if not product_id:
+        return jsonify({"error": "Product ID is required"}), 400
+
+    try:
+        product_id = ObjectId(product_id)
+    except Exception:
+        return jsonify({"error": "Invalid Product ID format"}), 400
+
+    pipeline = [
+        {"$unwind": "$items"},
+        {"$match": {"items._id": product_id, "status": "completed"}},
+        {"$group": {"_id": None, "total": {"$sum": "$items.qty"}}} 
+    ]
+
+    total_sold = list(orders_collection.aggregate(pipeline))
+
+    if total_sold:
+        return jsonify({"total_sold": total_sold[0]["total"]}), 200
+    else:
+        return jsonify({"total_sold": 0}), 200
