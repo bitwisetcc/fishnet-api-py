@@ -1,11 +1,14 @@
+from collections import defaultdict
+from math import ceil
 from typing import Any
-from bson import ObjectId
+from bson import ObjectId, Regex
 from flask import Blueprint, jsonify, request
+import pymongo
 
 from auth.views import login_required
 from connections import db
 
-collection = db["users"]
+COLLECTION = db["users"]
 users = Blueprint("users", __name__)
 
 # [POST] /users is implemented as /auth/register
@@ -20,19 +23,78 @@ def to_dict(item) -> dict[str, Any]:
 
 @users.get("/")
 def get_users():
-    users = list(collection.find())
+    users = list(COLLECTION.find())
     return jsonify([to_dict(e) for e in users]), 200
 
 
 @users.get("/role/<role>")
 def get_users_by_role(role):
-    users = list(collection.find({"role": role}))
+    users = list(COLLECTION.find({"role": role}))
     return jsonify([to_dict(e) for e in users]), 200
+
+
+@users.get("/filter")
+def filter_users():
+    body = request.args
+
+    filters = defaultdict(dict)
+    ordering = {}
+
+    if "name" in body:
+        filters["name"] = {"$regex": Regex(body["name"], "i")}
+
+    if "email" in body:
+        filters["email"] = {"$regex": Regex(body["email"])}
+
+    if "tel" in body:
+        filters["tel"] = {"$regex": Regex(rf"\b{body["tel"]}\d*")}
+
+    if "role" in body:
+        filters["role"] = "role"
+
+    if "ordering" in body:
+        symbol_mapping = {"+": pymongo.ASCENDING, "-": pymongo.DESCENDING}
+        for ord in body["ordering"].split(","):
+            key = ord[1:]
+            direction = symbol_mapping.get(ord[0])
+
+            if key in ["name", "tel", "email", "addr", "uf"] and direction is not None:
+                ordering[key] = direction
+            else:
+                return jsonify({"message": f"Invalid ordering '{ord}'"}), 400
+
+    if not ordering:
+        ordering["_id"] = pymongo.ASCENDING
+
+    count = int(body.get("count", 20))
+    page = int(body.get("page", 1))
+    pagination = [{"$skip": count * (page - 1)}, {"$limit": count}]
+
+    query = COLLECTION.aggregate(
+        [{"$match": filters}, {"$sort": ordering}] + pagination
+    )
+
+    full_count_result = COLLECTION.aggregate(
+        [
+            {"$match": filters},
+            {"$sort": ordering},
+            {"$group": {"_id": None, "count": {"$sum": 1}}},
+        ]
+    )
+
+    full_count = 0
+    for result in full_count_result:
+        full_count = result.get("count", 0)
+
+    if full_count == 0:
+        return jsonify({"match": [], "page_count": 0})
+
+    return jsonify({"match": list(query), "page_count": ceil(full_count / count)})
 
 
 @users.get("/<id>")
 def get_user_by_id(id):
-    user = collection.find_one({"_id": ObjectId(id)})
+    user = COLLECTION.find_one({"_id": ObjectId(id)})
     if user:
         return jsonify(to_dict(user)), 200
     return jsonify({"error": "User not found"}), 404
@@ -40,7 +102,7 @@ def get_user_by_id(id):
 
 @users.put("/<id>")
 def update_user(id):
-    final_user = collection.find_one({"_id": ObjectId(id)})
+    final_user = COLLECTION.find_one({"_id": ObjectId(id)})
 
     if final_user is None:
         return jsonify({"error": "User not found"}), 404
@@ -59,7 +121,7 @@ def update_user(id):
                 400,
             )
 
-    result = collection.update_one({"_id": ObjectId(id)}, {"$set": final_user})
+    result = COLLECTION.update_one({"_id": ObjectId(id)}, {"$set": final_user})
     if result.matched_count:
         return jsonify({"message": "User updated"}), 200
     return jsonify({"error": "User not found"}), 404
@@ -67,7 +129,7 @@ def update_user(id):
 
 @users.delete("/<id>")
 def delete_user(id):
-    result = collection.delete_one({"_id": ObjectId(id)})
+    result = COLLECTION.delete_one({"_id": ObjectId(id)})
     if result.deleted_count:
         return jsonify({"message": "User deleted"}), 200
     return jsonify({"error": "User not found"}), 404
@@ -77,7 +139,7 @@ def delete_user(id):
 @login_required
 def get_user_profile(payload):
     try:
-        user = collection.find_one({ "email": payload["email"] })
+        user = COLLECTION.find_one({"email": payload["email"]})
         user = to_dict(user)
         user.pop("password")
         return jsonify(user), 200
@@ -94,10 +156,12 @@ def update_user_profile(payload):
     blocked_fields = ["email", "name", "_id", "password"]
     filtered = [f for f in blocked_fields if body.get(f, None)]
     if filtered:
-        return jsonify({ "message": f"Tried to edit blocked fields: {', '.join(filtered)}"  })
-    
-    res = collection.update_one({ "_id": ObjectId(payload["sub"]) }, { "$set": body })
-    if not res.acknowledged:
-        return jsonify({ "message": "Database failed to write data" }), 500
+        return jsonify(
+            {"message": f"Tried to edit blocked fields: {', '.join(filtered)}"}
+        )
 
-    return jsonify({ "message": "Object saved successfully" }), 200
+    res = COLLECTION.update_one({"_id": ObjectId(payload["sub"])}, {"$set": body})
+    if not res.acknowledged:
+        return jsonify({"message": "Database failed to write data"}), 500
+
+    return jsonify({"message": "Object saved successfully"}), 200
