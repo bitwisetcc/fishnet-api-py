@@ -47,7 +47,7 @@ def filter_users():
         filters["email"] = {"$regex": Regex(body["email"])}
 
     if "tel" in body:
-        filters["tel"] = {"$regex": Regex(rf"\b{body["tel"]}\d*")}
+        filters["tel"] = {"$regex": Regex(rf"\b{body['tel']}\d*")}
 
     if "role" in body:
         filters["role"] = "role"
