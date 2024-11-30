@@ -90,6 +90,7 @@ def register_sale():
 
     return jsonify({"message": "Success", "inserted_id": str(_id)}), 200
 
+
 def parse_date(date_str):
     try:
         # Tentar converter a data no formato ISO 8601 (exemplo: "2023-11-24")
@@ -100,6 +101,7 @@ def parse_date(date_str):
             return datetime.fromtimestamp(int(date_str) // 1000)
         except ValueError:
             raise ValueError(f"Invalid date format: {date_str}")
+
 
 @sales.get("/filter")
 def filter_sales():
@@ -115,17 +117,16 @@ def filter_sales():
         filters["payment_method"] = {"$regex": Regex(body["payment_method"], "i")}
 
     if "status" in body:
-       try:
-           filters["status"] = int(body["status"])
-       except ValueError:
-           return jsonify({"message": "Invalid 'status' value"}), 400
+        try:
+            filters["status"] = int(body["status"])
+        except ValueError:
+            return jsonify({"message": "Invalid 'status' value"}), 400
 
     if "min_price" in body:
         filters["total"]["$gte"] = float(body["min_price"])
 
     if "max_price" in body:
         filters["total"]["$lte"] = float(body["max_price"])
-
 
     if "products" in body:
         filters["items._id"] = {"$in": body["products"].split(",")}
@@ -175,7 +176,9 @@ def filter_sales():
 
     full_count = 0
     for result in full_count_result:
-        full_count = result.get("count", 0)  # Usar 0 como valor padrão caso 'count' não exista
+        full_count = result.get(
+            "count", 0
+        )  # Usar 0 como valor padrão caso 'count' não exista
 
     # Se não houver nenhum resultado, a contagem de páginas deve ser zero
     if full_count == 0:

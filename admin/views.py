@@ -21,7 +21,7 @@ def backup_products():
     workbook = Workbook()
     sheet = workbook.active
 
-    data = db["teste_species"].find()
+    data = db["species"].find()
     for row in data:
         sheet.append(product_to_row(row))
 

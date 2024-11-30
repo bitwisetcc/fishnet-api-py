@@ -6,8 +6,8 @@ import pymongo
 from connections import db
 
 products = Blueprint("products", __name__)
-collection = db["teste_species"]
-orders_collection = db["order_real_users"]
+collection = db["species"]
+orders_collection = db["orders"]
 
 
 # TODO: upload images to some storage bucket and store the URLs
