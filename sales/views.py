@@ -13,6 +13,7 @@ from datetime import datetime
 sales = Blueprint("sales", __name__)
 COLLECTION = db["orders"]
 CUSTOMERS = db["users"]
+PRODUCTS = db["species"]
 
 
 BASE_QUERY = [
@@ -82,11 +83,17 @@ def register_sale():
     body = request.get_json()
 
     try:
-        sale = Sale.from_dict(body, request.headers.get("Authorization"))
+        sale: Sale = Sale.from_dict(body, request.headers.get("Authorization"))
     except (AssertionError, ValueError) as e:
         return jsonify({"message": str(e)}), 400
 
     _id = COLLECTION.insert_one(sale.to_bson()).inserted_id
+
+    sale.items
+
+    for prod in sale.items:
+        res = PRODUCTS.update_one({ "_id": prod.id }, { "$inc": { "quantity": -prod.qty} })
+        print(res)
 
     return jsonify({"message": "Success", "inserted_id": str(_id)}), 200
 
