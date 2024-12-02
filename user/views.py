@@ -89,7 +89,7 @@ def filter_users():
     if full_count == 0:
         return jsonify({"match": [], "page_count": 0})
 
-    return jsonify({"match": list(query), "page_count": ceil(full_count / count)})
+    return jsonify({"match": list(map(to_dict, query)), "page_count": ceil(full_count / count)})
 
 
 @users.get("/<id>")
