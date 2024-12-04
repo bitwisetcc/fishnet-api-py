@@ -1,9 +1,11 @@
 from collections import defaultdict
 from datetime import datetime
 from math import ceil
+import time
 
-from bson import Regex
-from flask import Blueprint, jsonify, request
+from bson import ObjectId, Regex
+from flask import Blueprint, jsonify, request, send_file
+from fpdf import FPDF
 import pymongo
 
 from connections import db
@@ -42,6 +44,7 @@ BASE_QUERY = [
                         "_id": {"$toString": "$$item._id"},
                         "price": {"$toDouble": "$$item.price"},
                         "qty": "$$item.qty",
+                        "name": "$$item.name",
                     },
                 }
             },
@@ -71,6 +74,17 @@ BASE_QUERY = [
     {"$unset": ["temp", "user"]},
 ]
 
+LOOKUP_PRODUCTS = [
+    {
+        "$lookup": {
+            "from": "species",
+            "localField": "items._id",
+            "foreignField": "_id",
+            "as": "prods",
+        }
+    }
+]
+
 
 @sales.get("/")
 def get_all_orders():
@@ -92,7 +106,7 @@ def register_sale():
     sale.items
 
     for prod in sale.items:
-        res = PRODUCTS.update_one({ "_id": prod.id }, { "$inc": { "quantity": -prod.qty} })
+        res = PRODUCTS.update_one({"_id": prod.id}, {"$inc": {"quantity": -prod.qty}})
         print(res)
 
     return jsonify({"message": "Success", "inserted_id": str(_id)}), 200
@@ -193,3 +207,58 @@ def filter_sales():
 
     # Retornar o número total de páginas
     return jsonify({"match": list(query), "page_count": ceil(full_count / count)})
+
+
+@sales.get("/report/<id>")
+def get_report(id):
+    sales = COLLECTION.aggregate(
+        [{"$match": {"_id": ObjectId(id)}}] + LOOKUP_PRODUCTS + BASE_QUERY
+    )
+    sale = list(sales)[0]
+    pdf = FPDF()
+
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+
+    pdf.cell(w=0, h=10, txt=sale["_id"], ln=1, align="L")
+    pdf.cell(w=0, h=10, txt=sale["customer"]["name"], ln=1, align="L")
+    pdf.cell(w=0, h=10, txt=sale["customer"]["email"], ln=1, align="L")
+    pdf.cell(
+        w=0,
+        h=10,
+        txt=f"Enviado via {sale['shipping_provider']} com taxa de R${sale['shipping']}",
+        ln=1,
+        align="L",
+    )
+    pdf.cell(w=0, h=10, txt="Itens comprados", ln=1, align="L")
+
+    header = ["id", "nome", "preço unitário", "quantidade"]
+    prods = [
+        (item["_id"], p["name"], str(item["price"]), str(item["qty"]))
+        for item, p in zip(sale["items"], sale["prods"])
+    ]
+    col_width = [60, 50, 35, 35]
+
+    for i, (h, w) in enumerate(zip(header, col_width)):
+        pdf.cell(
+            w=w, h=8, txt=h, border=1, align="C", ln=int(bool(i == len(header) - 1))
+        )
+
+    for prod in prods:
+        for i, (field, w) in enumerate(zip(prod, col_width)):
+            pdf.cell(
+                w=w,
+                h=8,
+                txt=field,
+                border=1,
+                align="C",
+                # ln=int(bool(i == len(header) - 1)),
+            )
+        pdf.cell(w=0, h=8, txt="", border=0, align="C", ln=1)
+
+    pdf.cell(w=0, h=10, txt=f"Total: R${sale['total']}", ln=1, align="L")
+
+    file_name = f"report__{time.time()}.pdf"
+
+    pdf.output(file_name)
+    return send_file(file_name, mimetype="application/pdf", as_attachment=True)
