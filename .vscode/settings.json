@@ -1,0 +1,9 @@
+{
+  "liveshare.launcherClient": "visualStudioCode",
+  "editor.defaultFormatter": "ms-python.black-formatter",
+  "git.enableSmartCommit": true,
+  "git.openAfterClone": "always",
+  "python.languageServer": "Default",
+  "python.analysis.autoImportCompletions": true,
+  "python.analysis.typeCheckingMode": "standard",
+}

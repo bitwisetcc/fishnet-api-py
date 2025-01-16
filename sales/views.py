@@ -2,6 +2,7 @@ from collections import defaultdict
 from datetime import datetime
 from math import ceil
 import time
+from typing import Any
 
 from bson import ObjectId, Regex
 from flask import Blueprint, jsonify, request, send_file
@@ -128,7 +129,7 @@ def parse_date(date_str):
 def filter_sales():
     body = request.args
 
-    filters = defaultdict(dict)
+    filters: dict[str, Any] = defaultdict(dict)
     ordering = {}
 
     if "username" in body:
@@ -220,17 +221,17 @@ def get_report(id):
     pdf.add_page()
     pdf.set_font("Arial", size=12)
 
-    pdf.cell(w=0, h=10, txt=sale["_id"], ln=1, align="L")
-    pdf.cell(w=0, h=10, txt=sale["customer"]["name"], ln=1, align="L")
-    pdf.cell(w=0, h=10, txt=sale["customer"]["email"], ln=1, align="L")
+    pdf.cell(w=0, h=10, txt=sale["_id"], ln=1, align="L")  # type: ignore
+    pdf.cell(w=0, h=10, txt=sale["customer"]["name"], ln=1, align="L")  # type: ignore
+    pdf.cell(w=0, h=10, txt=sale["customer"]["email"], ln=1, align="L")  # type: ignore
     pdf.cell(
         w=0,
         h=10,
-        txt=f"Enviado via {sale['shipping_provider']} com taxa de R${sale['shipping']}",
+        txt=f"Enviado via {sale['shipping_provider']} com taxa de R${sale['shipping']}",  # type: ignore
         ln=1,
         align="L",
     )
-    pdf.cell(w=0, h=10, txt="Itens comprados", ln=1, align="L")
+    pdf.cell(w=0, h=10, txt="Itens comprados", ln=1, align="L")  # type: ignore
 
     header = ["id", "nome", "preço unitário", "quantidade"]
     prods = [
@@ -241,7 +242,7 @@ def get_report(id):
 
     for i, (h, w) in enumerate(zip(header, col_width)):
         pdf.cell(
-            w=w, h=8, txt=h, border=1, align="C", ln=int(bool(i == len(header) - 1))
+            w=w, h=8, txt=h, border=1, align="C", ln=int(bool(i == len(header) - 1))  # type: ignore
         )
 
     for prod in prods:
@@ -249,14 +250,14 @@ def get_report(id):
             pdf.cell(
                 w=w,
                 h=8,
-                txt=field,
+                txt=field,  # type: ignore
                 border=1,
                 align="C",
                 # ln=int(bool(i == len(header) - 1)),
             )
-        pdf.cell(w=0, h=8, txt="", border=0, align="C", ln=1)
+        pdf.cell(w=0, h=8, txt="", border=0, align="C", ln=1)  # type: ignore
 
-    pdf.cell(w=0, h=10, txt=f"Total: R${sale['total']}", ln=1, align="L")
+    pdf.cell(w=0, h=10, txt=f"Total: R${sale['total']}", ln=1, align="L")  # type: ignore
 
     file_name = f"report__{time.time()}.pdf"
 
