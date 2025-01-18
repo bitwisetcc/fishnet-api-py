@@ -5,5 +5,8 @@
   "git.openAfterClone": "always",
   "python.languageServer": "Default",
   "python.analysis.autoImportCompletions": true,
-  "python.analysis.typeCheckingMode": "standard",
+  "python.analysis.typeCheckingMode": "off",
+  "[python]": {
+    "editor.indentSize": 4
+  }
 }

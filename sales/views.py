@@ -1,94 +1,27 @@
+import time
 from collections import defaultdict
 from datetime import datetime
 from math import ceil
-import time
 from typing import Any
 
+import pymongo
 from bson import ObjectId, Regex
 from flask import Blueprint, jsonify, request, send_file
 from fpdf import FPDF
-import pymongo
 
 from connections import db
-from sales.validation import Sale
-from datetime import datetime
+from sales.models import Sale
+from sales.queries import BASE_QUERY, LOOKUP_PRODUCTS
 
 sales = Blueprint("sales", __name__)
+
 COLLECTION = db["orders"]
 CUSTOMERS = db["users"]
 PRODUCTS = db["species"]
 
 
-BASE_QUERY = [
-    {
-        "$lookup": {
-            "from": "users",
-            "localField": "customer_id",
-            "foreignField": "_id",
-            "as": "user",
-            "pipeline": [
-                {"$project": {"name": 1, "email": 1}},
-                {"$set": {"_id": {"$toString": "$_id"}}},
-            ],
-        }
-    },
-    {"$unset": ["customer_id"]},
-    {
-        "$set": {
-            "temp": "$customer",
-            "customer": {"$arrayElemAt": ["$user", 0]},
-            "items": {
-                "$map": {
-                    "input": "$items",
-                    "as": "item",
-                    "in": {
-                        "_id": {"$toString": "$$item._id"},
-                        "price": {"$toDouble": "$$item.price"},
-                        "qty": "$$item.qty",
-                        "name": "$$item.name",
-                    },
-                }
-            },
-            "tax": {"$toDouble": "$tax"},
-            "shipping": {"$toDouble": "$shipping"},
-            "_id": {"$toString": "$_id"},
-            "total": {
-                "$toDouble": {
-                    "$sum": [
-                        {
-                            "$sum": {
-                                "$map": {
-                                    "input": "$items",
-                                    "as": "item",
-                                    "in": {"$multiply": ["$$item.price", "$$item.qty"]},
-                                }
-                            }
-                        },
-                        {"$toDouble": "$tax"},
-                        {"$toDouble": "$shipping"},
-                    ]
-                }
-            },
-        }
-    },
-    {"$set": {"customer": {"$ifNull": ["$customer", "$temp", "$customer"]}}},
-    {"$unset": ["temp", "user"]},
-]
-
-LOOKUP_PRODUCTS = [
-    {
-        "$lookup": {
-            "from": "species",
-            "localField": "items._id",
-            "foreignField": "_id",
-            "as": "prods",
-        }
-    }
-]
-
-
 @sales.get("/")
-def get_all_orders():
+def get_all():
     query = COLLECTION.aggregate(BASE_QUERY)
     return jsonify(list(query))
 
@@ -196,17 +129,11 @@ def filter_sales():
         ]
     )
 
-    full_count = 0
-    for result in full_count_result:
-        full_count = result.get(
-            "count", 0
-        )  # Usar 0 como valor padrão caso 'count' não exista
+    full_count = full_count_result.next().get("count", 0)
 
-    # Se não houver nenhum resultado, a contagem de páginas deve ser zero
     if full_count == 0:
         return jsonify({"match": [], "page_count": 0})
 
-    # Retornar o número total de páginas
     return jsonify({"match": list(query), "page_count": ceil(full_count / count)})
 
 

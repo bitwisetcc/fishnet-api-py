@@ -6,9 +6,11 @@ from typing import Any, Optional, Self
 from bson import Decimal128, ObjectId
 from bson.errors import InvalidId
 from flask import current_app
+from fpdf import FPDF
 import jwt
 
 from connections import db
+from sales.queries import BASE_QUERY, LOOKUP_PRODUCTS
 
 product_collection = db["teste_species"]
 
@@ -25,7 +27,7 @@ class AnonymousUser:
     tel: Optional[str] = None
 
     @staticmethod
-    def from_dict(d: dict[str, str]) -> Self:
+    def from_dict(d: dict[str, str]) -> "AnonymousUser":
         if d is None:
             raise AssertionError("Expected 'customer' dict, got None instead")
         for k, v in d.items():
@@ -37,7 +39,7 @@ class AnonymousUser:
         except TypeError as error:
             raise AssertionError(error)
 
-    def to_json(self) -> dict[str, str]:
+    def to_json(self) -> dict[str, Optional[str]]:
         return {
             "name": self.name,
             "surname": self.surname,
@@ -60,7 +62,7 @@ class SaleItem:
     _required = ["id", "qty"]
 
     @staticmethod
-    def from_dict(d: dict[str, str | int]) -> Self:
+    def from_dict(d: dict[str, Any]) -> "SaleItem":
         for field in SaleItem._required:
             assert field in d, f"Missing field '{field}' for SaleItem"
 
@@ -93,7 +95,7 @@ class SaleStatus(Enum):
     CANCELLED = 2
 
     def __str__(self) -> str:
-        return self.value
+        return str(self.value)
 
 
 @dataclass
@@ -110,7 +112,7 @@ class Sale:
     customer_id: Optional[ObjectId] = None
 
     @staticmethod
-    def from_dict(d: dict[str, Any], token=None) -> Self:
+    def from_dict(d: dict[str, Any], token=None) -> "Sale":
         assert d.get("customer") or token, "Missing customer data"
 
         assert d.get("items") is not None and len(d["items"]) > 0, "The cart is empty"
@@ -178,3 +180,50 @@ class Sale:
             "customer": self.customer and self.customer.to_json(),
             "customer_id": self.customer_id,
         }
+
+    @staticmethod
+    def generate_report(doc: dict[str, Any]) -> FPDF:
+        pdf = FPDF()
+
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
+
+        pdf.cell(w=0, h=10, txt=doc["_id"], ln=1, align="L")
+        pdf.cell(w=0, h=10, txt=doc["customer"]["name"], ln=1, align="L")
+        pdf.cell(w=0, h=10, txt=doc["customer"]["email"], ln=1, align="L")
+        pdf.cell(
+            w=0,
+            h=10,
+            txt=f"Enviado via {doc['shipping_provider']} com taxa de R${doc['shipping']}",
+            ln=1,
+            align="L",
+        )
+        pdf.cell(w=0, h=10, txt="Itens comprados", ln=1, align="L")
+
+        header = ["id", "nome", "preço unitário", "quantidade"]
+        prods = [
+            (item["_id"], p["name"], str(item["price"]), str(item["qty"]))
+            for item, p in zip(doc["items"], doc["prods"])
+        ]
+        col_width = [60, 50, 35, 35]
+
+        for i, (h, w) in enumerate(zip(header, col_width)):
+            pdf.cell(
+                w=w, h=8, txt=h, border=1, align="C", ln=int(bool(i == len(header) - 1))
+            )
+
+        for prod in prods:
+            for i, (field, w) in enumerate(zip(prod, col_width)):
+                pdf.cell(
+                    w=w,
+                    h=8,
+                    txt=field,
+                    border=1,
+                    align="C",
+                    # ln=int(bool(i == len(header) - 1)),
+                )
+            pdf.cell(w=0, h=8, txt="", border=0, align="C", ln=1)
+
+        pdf.cell(w=0, h=10, txt=f"Total: R${doc['total']}", ln=1, align="L")
+
+        return pdf
