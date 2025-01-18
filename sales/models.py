@@ -2,15 +2,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Inexact, InvalidOperation
 from enum import Enum
-from typing import Any, Optional, Self
+from typing import Any, Optional
+
+import jwt
 from bson import Decimal128, ObjectId
 from bson.errors import InvalidId
 from flask import current_app
 from fpdf import FPDF
-import jwt
 
 from connections import db
-from sales.queries import BASE_QUERY, LOOKUP_PRODUCTS
 
 product_collection = db["teste_species"]
 

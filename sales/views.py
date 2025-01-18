@@ -1,4 +1,4 @@
-import time
+import io
 from collections import defaultdict
 from datetime import datetime
 from math import ceil
@@ -7,7 +7,6 @@ from typing import Any
 import pymongo
 from bson import ObjectId, Regex
 from flask import Blueprint, jsonify, request, send_file
-from fpdf import FPDF
 
 from connections import db
 from sales.models import Sale
@@ -139,54 +138,12 @@ def filter_sales():
 
 @sales.get("/report/<id>")
 def get_report(id):
-    sales = COLLECTION.aggregate(
+    sale = COLLECTION.aggregate(
         [{"$match": {"_id": ObjectId(id)}}] + LOOKUP_PRODUCTS + BASE_QUERY
+    ).next()
+
+    pdf = Sale.generate_report(sale)
+
+    return send_file(
+        io.BytesIO(pdf.output(dest="S")), mimetype="application/pdf", as_attachment=True
     )
-    sale = list(sales)[0]
-    pdf = FPDF()
-
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-
-    pdf.cell(w=0, h=10, txt=sale["_id"], ln=1, align="L")  # type: ignore
-    pdf.cell(w=0, h=10, txt=sale["customer"]["name"], ln=1, align="L")  # type: ignore
-    pdf.cell(w=0, h=10, txt=sale["customer"]["email"], ln=1, align="L")  # type: ignore
-    pdf.cell(
-        w=0,
-        h=10,
-        txt=f"Enviado via {sale['shipping_provider']} com taxa de R${sale['shipping']}",  # type: ignore
-        ln=1,
-        align="L",
-    )
-    pdf.cell(w=0, h=10, txt="Itens comprados", ln=1, align="L")  # type: ignore
-
-    header = ["id", "nome", "preço unitário", "quantidade"]
-    prods = [
-        (item["_id"], p["name"], str(item["price"]), str(item["qty"]))
-        for item, p in zip(sale["items"], sale["prods"])
-    ]
-    col_width = [60, 50, 35, 35]
-
-    for i, (h, w) in enumerate(zip(header, col_width)):
-        pdf.cell(
-            w=w, h=8, txt=h, border=1, align="C", ln=int(bool(i == len(header) - 1))  # type: ignore
-        )
-
-    for prod in prods:
-        for i, (field, w) in enumerate(zip(prod, col_width)):
-            pdf.cell(
-                w=w,
-                h=8,
-                txt=field,  # type: ignore
-                border=1,
-                align="C",
-                # ln=int(bool(i == len(header) - 1)),
-            )
-        pdf.cell(w=0, h=8, txt="", border=0, align="C", ln=1)  # type: ignore
-
-    pdf.cell(w=0, h=10, txt=f"Total: R${sale['total']}", ln=1, align="L")  # type: ignore
-
-    file_name = f"report__{time.time()}.pdf"
-
-    pdf.output(file_name)
-    return send_file(file_name, mimetype="application/pdf", as_attachment=True)
