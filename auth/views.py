@@ -3,7 +3,7 @@ from functools import wraps
 import bcrypt
 import jwt
 from bson import ObjectId
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, abort, current_app, jsonify, request
 
 from connections import db
 
@@ -91,7 +91,7 @@ def register():
         auth_token = jwt.encode(payload, current_app.config["SECRET_KEY"])
     except Exception as e:
         print(e.args)
-        return jsonify({"message": "Falha ao criar JWT."}), 500
+        abort(500, description="Falha ao criar bearer token")
 
     return jsonify({"token": auth_token}), 201
 

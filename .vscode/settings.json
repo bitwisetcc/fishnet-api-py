@@ -8,5 +8,8 @@
   "python.analysis.typeCheckingMode": "off",
   "[python]": {
     "editor.indentSize": 4
+  },
+  "[yaml]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
   }
 }
