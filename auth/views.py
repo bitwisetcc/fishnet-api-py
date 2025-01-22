@@ -3,39 +3,13 @@ from functools import wraps
 import bcrypt
 import jwt
 from bson import ObjectId
-from flask import Blueprint, abort, current_app, jsonify, request
+from flask import Blueprint, Response, abort, current_app, jsonify, request
 
 from connections import db
+from decorators import bearer_required
 
 auth = Blueprint("auth", __name__)
 collection = db["users"]
-
-
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        auth_header = request.headers.get("Authorization")
-
-        if auth_header is None:
-            return jsonify({"message": "Token não fornecido."}), 400
-
-        try:
-            payload = jwt.decode(
-                auth_header.encode(),
-                current_app.config["SECRET_KEY"],
-                algorithms=["HS256"],
-            )
-        except Exception as e:
-            print(e.args)
-            return jsonify({"message": "Token inválido."}), 400
-
-        user = collection.find_one({"_id": ObjectId(payload["sub"])})
-        if user is None:
-            return jsonify({"message": "Usuário não encontrado.", "res": payload}), 404
-
-        return f(*args, payload, **kwargs)
-
-    return decorated_function
 
 
 @auth.post("/register")
@@ -100,24 +74,28 @@ def register():
 def login():
     post_data = request.get_json()
     if post_data.get("email") is None or post_data.get("password") is None:
-        return jsonify({"message": "Dados inválidos."}), 400
+        abort(400, description="Dados inválidos")
 
     user = collection.find_one({"email": post_data.get("email")})
 
     if user is None:
-        return jsonify({"message": "Login inválido."}), 404
+        abort(404, description="Login inválido")
 
-    if bcrypt.checkpw(bytes(post_data.get("password"), "utf-8"), user["password"]):
-        payload = {
-            "sub": str(user["_id"]),
-            "email": user["email"],
-            "name": user["name"],
-        }
+    if not bcrypt.checkpw(bytes(post_data.get("password"), "utf-8"), user["password"]):
+        abort(404, descriptoion="Login inválido")
 
-        auth_token = jwt.encode(payload, current_app.config["SECRET_KEY"])
-        return jsonify({"token": auth_token, "role": user["role"]}), 200
+    payload = {
+        "sub": str(user["_id"]),
+        "email": user["email"],
+        "name": user["name"],
+        "role": user["role"],
+    }
 
-    return jsonify({"message": "Login inválido."}), 404
+    return Response(
+        jwt.encode(payload, current_app.config["SECRET_KEY"]),
+        200,
+        mimetype="text/plain",
+    )
 
 
 @auth.get("/check")
@@ -154,10 +132,10 @@ def me():
 
 
 @auth.post("/password")
-@login_required
-def change_password(payload):
+@bearer_required
+def change_password(sub):
     post_data = request.get_json()
-    user = collection.find_one({"_id": ObjectId(payload["sub"])})
+    user = collection.find_one({"_id": ObjectId(sub)})
 
     if user is None:
         return jsonify({"message": "Usuário não encontrado."}), 404
@@ -171,7 +149,7 @@ def change_password(payload):
         )
 
         collection.update_one(
-            {"_id": ObjectId(payload["sub"])},
+            {"_id": ObjectId(sub)},
             {"$set": {"password": hashed_password}},
         )
         return jsonify({"message": "Senha alterada com sucesso."}), 200

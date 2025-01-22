@@ -4,6 +4,7 @@ from flask import Blueprint, jsonify, request
 import pymongo
 
 from connections import db
+from decorators import bearer_required
 
 products = Blueprint("products", __name__)
 collection = db["species"]
@@ -168,6 +169,7 @@ def get_itens_by_filter():
 
     return jsonify({"match": itens, "page_count": ceil(total / count)})
 
+
 @products.get("/getotal")
 def get_total():
     product_id = request.args.get("product_id")
@@ -182,7 +184,7 @@ def get_total():
     pipeline = [
         {"$unwind": "$items"},
         {"$match": {"items._id": product_id, "status": "completed"}},
-        {"$group": {"_id": None, "total": {"$sum": "$items.qty"}}} 
+        {"$group": {"_id": None, "total": {"$sum": "$items.qty"}}},
     ]
 
     total_sold = list(orders_collection.aggregate(pipeline))

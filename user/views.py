@@ -5,8 +5,8 @@ from bson import ObjectId, Regex
 from flask import Blueprint, jsonify, request
 import pymongo
 
-from auth.views import login_required
 from connections import db
+from decorators import bearer_required
 
 COLLECTION = db["users"]
 users = Blueprint("users", __name__)
@@ -136,7 +136,7 @@ def delete_user(id):
 
 
 @users.get("/me")
-@login_required
+@bearer_required
 def get_user_profile(payload):
     try:
         user = COLLECTION.find_one({"email": payload["email"]})
@@ -149,7 +149,7 @@ def get_user_profile(payload):
 
 
 @users.put("/me")
-@login_required
+@bearer_required()
 def update_user_profile(payload):
     body = dict(request.get_json())
 
