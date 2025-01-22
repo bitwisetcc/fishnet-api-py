@@ -18,6 +18,61 @@ product_collection = db["teste_species"]
 
 VALID_ORDERINGS = ["total", "date", "customer.name"]
 
+SALE_ITEM_SCHEMA = {
+    "type": "object",
+    "required": ["_id", "quantity"],
+    "properties": {
+        "_id": {"type": "string"},
+        "price": {"type": "string"},
+        "quantity": {"type": "integer"},
+    },
+}
+
+ADDRESS_SCHEMA = {
+    "type": "object",
+    "required": ["cep", "number"],
+    "properties": {
+        "cep": {"type": "string"},
+        "number": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "street": {"type": "string"},
+        "uf": {"type": "string"},
+    },
+}
+
+ANONYMOUS_USER_SCHEMA = {
+    "type": "object",
+    "required": ["name", "addr", "email"],
+    "properties": {
+        "name": {"type": "string"},
+        "addr": ADDRESS_SCHEMA,
+        "email": {"type": "string", "format": "email"},
+        "phone": {"type": "string"},
+    },
+}
+
+SALE_SCHEMA = {
+    "type": "object",
+    "required": ["items", "tax", "shiping", "shipping_provider", "payment_method"],
+    "properties": {
+        "items": {"type": "array", "items": SALE_ITEM_SCHEMA},
+        "tax": {"type": "number", "exclusiveMinimum": 0},
+        "shipping": {"type": "number", "exclusiveMinimum": 0},
+        "shipping_provider": {"type": "string"},
+        "payment_method": {
+            "type": "string",
+            "enum": ["debit", "credit", "pix"],
+        },
+        "payment_provider": {"type": "string"},
+        "status": {
+            "type": "int",
+            "enum": [0, 1, 2],
+        },
+        "created_at": {"type": "string"},
+        "customer": ANONYMOUS_USER_SCHEMA,
+        "customer_id": {"type": "string"},
+    },
+}
+
 
 @dataclass
 class AnonymousUser:
@@ -268,7 +323,7 @@ def parse_filters(args: Dict[str, str]):
         try:
             filters["date"]["$lte"] = parse_date(args["max_date"])
         except ValueError as e:
-            return jsonify({"message": str(e)}), 400
+            raise AssertionError(e.args[0])
 
     if "ordering" in args:
         symbol_mapping = {"+": pymongo.ASCENDING, "-": pymongo.DESCENDING}
