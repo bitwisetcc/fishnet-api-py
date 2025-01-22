@@ -42,7 +42,7 @@ def bearer_required(minimum_role=Role.CUSTOMER):
             auth = request.headers.get("Authorization")
 
             if auth is None:
-                abort(400, description="Token ausente")
+                abort(400, "Token ausente")
 
             try:
                 payload = jwt.decode(
@@ -52,10 +52,10 @@ def bearer_required(minimum_role=Role.CUSTOMER):
                 )
             except Exception as e:
                 print(e.args)
-                abort(400, description="Token inválido")
+                abort(400, "Token inválido")
 
             if Role.from_str(payload["role"]) < minimum_role:
-                abort(403, description="Cargo inválido")
+                abort(403, "Cargo inválido")
 
             return f(ObjectId(payload["sub"]), *args, **kwargs)
 

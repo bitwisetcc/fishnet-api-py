@@ -27,7 +27,7 @@ def get_users():
     try:
         query = parse_filters(request.args)
     except AssertionError as e:
-        abort(400, description=e.args[0])
+        abort(400, e.args[0])
 
     count = int(request.args.get("count", 20))
     page = int(request.args.get("page", 1))
@@ -55,7 +55,7 @@ def get_user_by_id(_, id):
     user = COLLECTION.find_one({"_id": ObjectId(id)})
 
     if not user:
-        abort(404, description="User not found")
+        abort(404, "User not found")
 
     return jsonify(to_dict(user)), 200
 
@@ -84,16 +84,16 @@ def update_profile(id: ObjectId):
     transaction = COLLECTION.update_one({"_id": id}, {"$set": body})
 
     if not transaction.acknowledged:
-        abort(500, description="Database failed to write data")
+        abort(500, "Database failed to write data")
 
     return Response(status=204)
 
 
 @users.delete("/self")
 @bearer_required()
-def user_profile(id: ObjectId):
+def delete_profile(id: ObjectId):
     transaction = COLLECTION.delete_one({"_id": id})
     if not transaction.acknowledged:
-        abort(500, description="Database failed to delete data")
+        abort(500, "Database failed to delete data")
 
     return Response(status=204)

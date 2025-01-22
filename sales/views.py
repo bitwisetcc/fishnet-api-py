@@ -1,16 +1,14 @@
 import io
-from collections import defaultdict
-from datetime import datetime
 from math import ceil
-from typing import Any
 
-import pymongo
-from bson import ObjectId, Regex
-from flask import Blueprint, abort, jsonify, request, send_file
+from bson import ObjectId
+from bson.errors import InvalidId
+from flask import Blueprint, Response, abort, jsonify, request, send_file
+from jsonschema import ValidationError, validate
 
 from connections import db
 from decorators import Role, bearer_required
-from sales.models import Sale, parse_filters
+from sales.models import SALE_SCHEMA, generate_report, parse_filters
 from sales.queries import BASE_QUERY, LOOKUP_PRODUCTS
 
 sales = Blueprint("sales", __name__)
@@ -21,11 +19,12 @@ PRODUCTS = db["species"]
 
 
 @sales.get("/")
-def get_products():
+@bearer_required(Role.STAFF)
+def get_sales():
     try:
         query = parse_filters(request.args)
     except AssertionError as e:
-        abort(400, description=e.args[0])
+        abort(400, e.args[0])
 
     count = int(request.args.get("count", 20))
     page = int(request.args.get("page", 1))
@@ -45,25 +44,47 @@ def get_products():
     return jsonify({"match": list(query), "page_count": ceil(full_count / count)})
 
 
-@sales.post("/")
-@bearer_required(Role.STAFF)
+@sales.post("/buy")
 def register_sale():
-    body = request.get_json()
+    sale = dict(request.get_json())
 
     try:
-        sale: Sale = Sale.from_dict(body, request.headers.get("Authorization"))
-    except (AssertionError, ValueError) as e:
-        return jsonify({"message": str(e)}), 400
+        validate(sale, SALE_SCHEMA)
+    except ValidationError as e:
+        abort(400, f"Validação falha: {e.args[0]}")
 
-    _id = COLLECTION.insert_one(sale.to_bson()).inserted_id
+    try:
+        matching_products = list(
+            PRODUCTS.find(
+                {"_id": {"$in": [ObjectId(item["_id"]) for item in sale["items"]]}}
+            )
+        )
+    except InvalidId as e:
+        abort(400, "Item com id inválido: {}".format("".join(e.args[0].split("'")[:2])))
 
-    sale.items
+    if len(matching_products) != len(sale["items"]):
+        abort(400, "Id de item inválido")
 
-    for prod in sale.items:
-        res = PRODUCTS.update_one({"_id": prod.id}, {"$inc": {"quantity": -prod.qty}})
-        print(res)
+    for item, prod in zip(sale["items"], matching_products):
+        item["price"] = prod["price"]
 
-    return jsonify({"message": "Success", "inserted_id": str(_id)}), 200
+    # TODO: add customer_id for token auth
+    if (request.headers.get("Authorization") is None) and ("customer" not in sale):
+        abort(400, "Informação do cliente ausente")
+    if (request.headers.get("Authorization") is not None) == ("customer" in sale):
+        abort(400, "Multiplas fontes de informação de cliente")
+
+    if sale["payment_method"] == "pix" and "payment_provider" in sale:
+        abort(400, "Pagamentos em PIX não apresentam provedor")
+
+    COLLECTION.insert_one(sale)
+
+    for prod in sale["items"]:
+        PRODUCTS.update_one(
+            {"_id": prod["_id"]}, {"$inc": {"quantity": -prod["quantity"]}}
+        )
+
+    return Response(status=204)
 
 
 @sales.get("/report/<id>")
@@ -72,7 +93,7 @@ def get_report(id):
         [{"$match": {"_id": ObjectId(id)}}] + LOOKUP_PRODUCTS + BASE_QUERY
     ).next()
 
-    pdf = Sale.generate_report(sale)
+    pdf = generate_report(sale)
 
     return send_file(
         io.BytesIO(pdf.output(dest="S")), mimetype="application/pdf", as_attachment=True

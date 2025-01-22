@@ -14,12 +14,12 @@ collection = db["users"]
 def login():
     post_data = request.get_json()
     if post_data.get("email") is None or post_data.get("password") is None:
-        abort(400, description="Dados inválidos")
+        abort(400, "Dados inválidos")
 
     user = collection.find_one({"email": post_data.get("email")})
 
     if user is None:
-        abort(404, description="Login inválido")
+        abort(404, "Login inválido")
 
     if not bcrypt.checkpw(bytes(post_data.get("password"), "utf-8"), user["password"]):
         abort(404, descriptoion="Login inválido")
@@ -91,7 +91,7 @@ def register():
         auth_token = jwt.encode(payload, current_app.config["SECRET_KEY"])
     except Exception as e:
         print(e.args)
-        abort(500, description="Falha ao criar bearer token")
+        abort(500, "Falha ao criar bearer token")
 
     return jsonify({"token": auth_token}), 201
 
@@ -102,7 +102,7 @@ def me(sub):
     user = collection.find_one({"_id": ObjectId(sub)})
 
     if user is None:
-        abort(404, description=f"Usuário não encontrado: {sub}")
+        abort(404, f"Usuário não encontrado: {sub}")
 
     return (
         jsonify(
