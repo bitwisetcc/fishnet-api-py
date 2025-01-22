@@ -1,12 +1,12 @@
-from collections import defaultdict
 from math import ceil
 from typing import Any
-from bson import ObjectId, Regex
+
+from bson import ObjectId
 from flask import Blueprint, jsonify, request
-import pymongo
 
 from connections import db
 from decorators import bearer_required
+from user.models import parse_filters
 
 COLLECTION = db["users"]
 users = Blueprint("users", __name__)
@@ -17,79 +17,32 @@ users = Blueprint("users", __name__)
 
 def to_dict(item) -> dict[str, Any]:
     item["_id"] = str(item["_id"])
-    item["password"] = item["password"].decode()
+    del item["password"]
     return item
 
 
 @users.get("/")
 def get_users():
-    users = list(COLLECTION.find())
-    return jsonify([to_dict(e) for e in users]), 200
+    query = parse_filters(request.args)
 
-
-@users.get("/role/<role>")
-def get_users_by_role(role):
-    users = list(COLLECTION.find({"role": role}))
-    return jsonify([to_dict(e) for e in users]), 200
-
-
-@users.get("/filter")
-def filter_users():
-    body = request.args
-
-    filters = defaultdict(dict)
-    ordering = {}
-
-    if "name" in body:
-        filters["name"] = {"$regex": Regex(body["name"], "i")}
-
-    if "email" in body:
-        filters["email"] = {"$regex": Regex(body["email"])}
-
-    if "tel" in body:
-        filters["tel"] = {"$regex": Regex(rf"\b{body['tel']}\d*")}
-
-    if "role" in body:
-        filters["role"] = "role"
-
-    if "ordering" in body:
-        symbol_mapping = {"+": pymongo.ASCENDING, "-": pymongo.DESCENDING}
-        for ord in body["ordering"].split(","):
-            key = ord[1:]
-            direction = symbol_mapping.get(ord[0])
-
-            if key in ["name", "tel", "email", "addr", "uf"] and direction is not None:
-                ordering[key] = direction
-            else:
-                return jsonify({"message": f"Invalid ordering '{ord}'"}), 400
-
-    if not ordering:
-        ordering["_id"] = pymongo.ASCENDING
-
-    count = int(body.get("count", 20))
-    page = int(body.get("page", 1))
+    count = int(request.args.get("count", 20))
+    page = int(request.args.get("page", 1))
     pagination = [{"$skip": count * (page - 1)}, {"$limit": count}]
 
-    query = COLLECTION.aggregate(
-        [{"$match": filters}, {"$sort": ordering}] + pagination
-    )
+    results = COLLECTION.aggregate(query + pagination)
 
     full_count_result = COLLECTION.aggregate(
-        [
-            {"$match": filters},
-            {"$sort": ordering},
-            {"$group": {"_id": None, "count": {"$sum": 1}}},
-        ]
+        query + [{"$group": {"_id": None, "count": {"$sum": 1}}}],
     )
 
-    full_count = 0
-    for result in full_count_result:
-        full_count = result.get("count", 0)
+    full_count = full_count_result.next().get("count", 0)
 
     if full_count == 0:
         return jsonify({"match": [], "page_count": 0})
 
-    return jsonify({"match": list(map(to_dict, query)), "page_count": ceil(full_count / count)})
+    return jsonify(
+        {"match": list(map(to_dict, results)), "page_count": ceil(full_count / count)}
+    )
 
 
 @users.get("/<id>")

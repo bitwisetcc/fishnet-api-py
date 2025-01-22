@@ -1,5 +1,3 @@
-from functools import wraps
-
 import bcrypt
 import jwt
 from bson import ObjectId
@@ -10,6 +8,34 @@ from decorators import bearer_required
 
 auth = Blueprint("auth", __name__)
 collection = db["users"]
+
+
+@auth.post("/login")
+def login():
+    post_data = request.get_json()
+    if post_data.get("email") is None or post_data.get("password") is None:
+        abort(400, description="Dados inválidos")
+
+    user = collection.find_one({"email": post_data.get("email")})
+
+    if user is None:
+        abort(404, description="Login inválido")
+
+    if not bcrypt.checkpw(bytes(post_data.get("password"), "utf-8"), user["password"]):
+        abort(404, descriptoion="Login inválido")
+
+    payload = {
+        "sub": str(user["_id"]),
+        "email": user["email"],
+        "name": user["name"],
+        "role": user["role"],
+    }
+
+    return Response(
+        jwt.encode(payload, current_app.config["SECRET_KEY"]),
+        200,
+        mimetype="text/plain",
+    )
 
 
 @auth.post("/register")
@@ -70,51 +96,13 @@ def register():
     return jsonify({"token": auth_token}), 201
 
 
-@auth.post("/login")
-def login():
-    post_data = request.get_json()
-    if post_data.get("email") is None or post_data.get("password") is None:
-        abort(400, description="Dados inválidos")
-
-    user = collection.find_one({"email": post_data.get("email")})
-
-    if user is None:
-        abort(404, description="Login inválido")
-
-    if not bcrypt.checkpw(bytes(post_data.get("password"), "utf-8"), user["password"]):
-        abort(404, descriptoion="Login inválido")
-
-    payload = {
-        "sub": str(user["_id"]),
-        "email": user["email"],
-        "name": user["name"],
-        "role": user["role"],
-    }
-
-    return Response(
-        jwt.encode(payload, current_app.config["SECRET_KEY"]),
-        200,
-        mimetype="text/plain",
-    )
-
-
 @auth.get("/check")
-def me():
-    auth_header = request.headers.get("Authorization")
-    if auth_header is None:
-        return jsonify({"message": "Token não fornecido."}), 400
+@bearer_required()
+def me(sub):
+    user = collection.find_one({"_id": ObjectId(sub)})
 
-    try:
-        payload = jwt.decode(
-            auth_header.encode(), current_app.config["SECRET_KEY"], algorithms=["HS256"]
-        )
-    except Exception as e:
-        print(e.args)
-        return jsonify({"message": "Token inválido."}), 400
-
-    user = collection.find_one({"_id": ObjectId(payload["sub"])})
     if user is None:
-        return jsonify({"message": "Usuário não encontrado.", "res": payload}), 404
+        abort(404, description=f"Usuário não encontrado: {sub}")
 
     return (
         jsonify(
@@ -132,7 +120,7 @@ def me():
 
 
 @auth.post("/password")
-@bearer_required
+@bearer_required()
 def change_password(sub):
     post_data = request.get_json()
     user = collection.find_one({"_id": ObjectId(sub)})

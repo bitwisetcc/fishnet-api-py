@@ -9,6 +9,7 @@ from bson import ObjectId, Regex
 from flask import Blueprint, jsonify, request, send_file
 
 from connections import db
+from decorators import bearer_required
 from sales.models import Sale
 from sales.queries import BASE_QUERY, LOOKUP_PRODUCTS
 
@@ -17,12 +18,6 @@ sales = Blueprint("sales", __name__)
 COLLECTION = db["orders"]
 CUSTOMERS = db["users"]
 PRODUCTS = db["species"]
-
-
-@sales.get("/")
-def get_all():
-    query = COLLECTION.aggregate(BASE_QUERY)
-    return jsonify(list(query))
 
 
 @sales.post("/new")
