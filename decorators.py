@@ -1,5 +1,6 @@
 from functools import wraps
 
+from bson import ObjectId
 import jwt
 from flask import abort, current_app, request
 
@@ -28,7 +29,7 @@ def bearer_required(minimum_role="customer"):
             if ROLES.index(payload["role"]) < ROLES.index(minimum_role):
                 abort(403, description="Cargo inválido")
 
-            return f(payload["sub"], *args, **kwargs)
+            return f(ObjectId(payload["sub"]), *args, **kwargs)
 
         return decorated_function
 

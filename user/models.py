@@ -29,7 +29,7 @@ def parse_filters(args: Dict[str, str]):
             key = ord[1:]
             direction = symbol_mapping.get(ord[0])
 
-            assert key in VALID_ORDERINGS and direction is not None, "Invalid ordering"
+            assert key in VALID_ORDERINGS and direction, f"Invalid ordering '{ord}'"
 
             ordering[key] = direction
 

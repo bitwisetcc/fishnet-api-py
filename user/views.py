@@ -2,7 +2,7 @@ from math import ceil
 from typing import Any
 
 from bson import ObjectId
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, abort, jsonify, request
 
 from connections import db
 from decorators import bearer_required
@@ -22,8 +22,12 @@ def to_dict(item) -> dict[str, Any]:
 
 
 @users.get("/")
+@bearer_required("staff")
 def get_users():
-    query = parse_filters(request.args)
+    try:
+        query = parse_filters(request.args)
+    except AssertionError as e:
+        abort(400, description=e.args[0])
 
     count = int(request.args.get("count", 20))
     page = int(request.args.get("page", 1))
@@ -46,75 +50,44 @@ def get_users():
 
 
 @users.get("/<id>")
-def get_user_by_id(id):
+@bearer_required("staff")
+def get_user_by_id(_, id):
     user = COLLECTION.find_one({"_id": ObjectId(id)})
-    if user:
-        return jsonify(to_dict(user)), 200
-    return jsonify({"error": "User not found"}), 404
 
+    if not user:
+        abort(404, description="User not found")
 
-@users.put("/<id>")
-def update_user(id):
-    final_user = COLLECTION.find_one({"_id": ObjectId(id)})
-
-    if final_user is None:
-        return jsonify({"error": "User not found"}), 404
-
-    for key, value in request.json.items():
-        if key not in ["_id", "email", "password"]:
-            if key == "role" and value not in ["cpf", "cnpj", "staff"]:
-                return jsonify({"error": "Invalid role"}), 400
-
-            final_user[key] = value
-        else:
-            return (
-                jsonify(
-                    {"error": "Trying to update locked fields: id, email or password"}
-                ),
-                400,
-            )
-
-    result = COLLECTION.update_one({"_id": ObjectId(id)}, {"$set": final_user})
-    if result.matched_count:
-        return jsonify({"message": "User updated"}), 200
-    return jsonify({"error": "User not found"}), 404
+    return jsonify(to_dict(user)), 200
 
 
 @users.delete("/<id>")
-def delete_user(id):
-    result = COLLECTION.delete_one({"_id": ObjectId(id)})
-    if result.deleted_count:
-        return jsonify({"message": "User deleted"}), 200
-    return jsonify({"error": "User not found"}), 404
+@bearer_required("manager")
+def delete_user(_, id):
+    transaction = COLLECTION.delete_one({"_id": ObjectId(id)})
+
+    if not transaction.acknowledged:
+        abort(404, "Usuário não encontrado")
+
+    return Response(status=204)
 
 
-@users.get("/me")
-@bearer_required
-def get_user_profile(payload):
-    try:
-        user = COLLECTION.find_one({"email": payload["email"]})
-        user = to_dict(user)
-        user.pop("password")
-        return jsonify(user), 200
-    except Exception as e:
-        print(e.args)
-        return jsonify(e.args), 500
-
-
-@users.put("/me")
+@users.route("/self")
 @bearer_required()
-def update_user_profile(payload):
-    body = dict(request.get_json())
+def user_profile(id: ObjectId):
+    match request.method:
+        case "GET":
+            return jsonify(to_dict(COLLECTION.find_one({"_id": id}))), 200
+        case "PUT":
+            body = dict(request.get_json())
+            transaction = COLLECTION.update_one({"_id": id}, {"$set": body})
 
-    blocked_fields = ["email", "name", "_id", "password"]
-    filtered = [f for f in blocked_fields if body.get(f, None)]
-    if filtered:
-        return jsonify(
-            {"message": f"Tried to edit blocked fields: {', '.join(filtered)}"}
-        )
+            if not transaction.acknowledged:
+                abort(500, description="Database failed to write data")
 
-    res = COLLECTION.update_one({"_id": ObjectId(payload["sub"])}, {"$set": body})
-    if not res.acknowledged:
-        return jsonify({"message": "Database failed to write data"}), 500
+            return Response(status=204)
+        case "DELETE":
+            transaction = COLLECTION.delete_one({"_id": id})
+            if not transaction.acknowledged:
+                abort(500, description="Database failed to delete data")
 
-    return jsonify({"message": "Object saved successfully"}), 200
+            return Response(status=204)
