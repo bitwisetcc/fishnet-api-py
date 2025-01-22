@@ -1,18 +1,22 @@
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Inexact, InvalidOperation
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 import jwt
-from bson import Decimal128, ObjectId
+from bson import Decimal128, ObjectId, Regex
 from bson.errors import InvalidId
 from flask import current_app
 from fpdf import FPDF
+import pymongo
 
 from connections import db
 
 product_collection = db["teste_species"]
+
+VALID_ORDERINGS = ["total", "date", "customer.name"]
 
 
 @dataclass
@@ -227,3 +231,65 @@ class Sale:
         pdf.cell(w=0, h=10, txt=f"Total: R${doc['total']}", ln=1, align="L")
 
         return pdf
+
+
+def parse_filters(args: Dict[str, str]):
+    filters: dict[str, Any] = defaultdict(dict)
+    ordering = {}
+
+    if "username" in args:
+        filters["customer.name"] = {"$regex": Regex(args["username"], "i")}
+
+    if "payment_method" in args:
+        filters["payment_method"] = {"$regex": Regex(args["payment_method"], "i")}
+
+    if "status" in args:
+        try:
+            filters["status"] = int(args["status"])
+        except ValueError:
+            raise AssertionError("Status inválido")
+
+    if "min_price" in args:
+        filters["total"]["$gte"] = float(args["min_price"])
+
+    if "max_price" in args:
+        filters["total"]["$lte"] = float(args["max_price"])
+
+    if "products" in args:
+        filters["items._id"] = {"$in": args["products"].split(",")}
+
+    if "min_date" in args:
+        try:
+            filters["date"]["$gte"] = parse_date(args["min_date"])
+        except ValueError as e:
+            raise AssertionError(str(e.args[0]))
+
+    if "max_date" in args:
+        try:
+            filters["date"]["$lte"] = parse_date(args["max_date"])
+        except ValueError as e:
+            return jsonify({"message": str(e)}), 400
+
+    if "ordering" in args:
+        symbol_mapping = {"+": pymongo.ASCENDING, "-": pymongo.DESCENDING}
+        for ord in args["ordering"].split(","):
+            key = ord[1:]
+            direction = symbol_mapping.get(ord[0])
+
+            assert key in VALID_ORDERINGS and direction, f"Invalid ordering '{ord}'"
+            ordering[key] = direction
+
+    if not ordering:
+        ordering["_id"] = pymongo.ASCENDING
+
+
+def parse_date(date_str):
+    try:
+        # Tentar converter a data no formato ISO 8601 (exemplo: "2023-11-24")
+        return datetime.fromisoformat(date_str)
+    except ValueError:
+        # Se não for nesse formato, tentar como timestamp em milissegundos
+        try:
+            return datetime.fromtimestamp(int(date_str) // 1000)
+        except ValueError:
+            raise ValueError(f"Invalid date format: {date_str}")

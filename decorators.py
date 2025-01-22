@@ -1,13 +1,41 @@
-from functools import wraps
+from enum import Enum
+from functools import total_ordering, wraps
 
 from bson import ObjectId
 import jwt
 from flask import abort, current_app, request
 
-ROLES = [None, "customer", "staff", "manager", "admin"]
+
+@total_ordering
+class Role(Enum):
+    ANONYMOUS = 0
+    CUSTOMER = 1
+    STAFF = 2
+    MANAGER = 3
+    ADMIN = 4
+
+    @staticmethod
+    def from_str(s: str) -> "Role":
+        match s:
+            case "customer":
+                return Role.CUSTOMER
+            case "staff":
+                return Role.STAFF
+            case "manager":
+                return Role.MANAGER
+            case "admin":
+                return Role.ADMIN
+            case _:
+                return Role.ANONYMOUS
+
+    def __lt__(self, other):
+        if not self.__class__ is other.__class__:
+            return NotImplemented
+
+        return self.value < other.value
 
 
-def bearer_required(minimum_role="customer"):
+def bearer_required(minimum_role=Role.CUSTOMER):
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
@@ -26,7 +54,7 @@ def bearer_required(minimum_role="customer"):
                 print(e.args)
                 abort(400, description="Token inválido")
 
-            if ROLES.index(payload["role"]) < ROLES.index(minimum_role):
+            if Role.from_str(payload["role"]) < minimum_role:
                 abort(403, description="Cargo inválido")
 
             return f(ObjectId(payload["sub"]), *args, **kwargs)

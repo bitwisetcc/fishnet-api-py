@@ -6,11 +6,11 @@ from typing import Any
 
 import pymongo
 from bson import ObjectId, Regex
-from flask import Blueprint, jsonify, request, send_file
+from flask import Blueprint, abort, jsonify, request, send_file
 
 from connections import db
-from decorators import bearer_required
-from sales.models import Sale
+from decorators import Role, bearer_required
+from sales.models import Sale, parse_filters
 from sales.queries import BASE_QUERY, LOOKUP_PRODUCTS
 
 sales = Blueprint("sales", __name__)
@@ -20,7 +20,33 @@ CUSTOMERS = db["users"]
 PRODUCTS = db["species"]
 
 
-@sales.post("/new")
+@sales.get("/")
+def get_products():
+    try:
+        query = parse_filters(request.args)
+    except AssertionError as e:
+        abort(400, description=e.args[0])
+
+    count = int(request.args.get("count", 20))
+    page = int(request.args.get("page", 1))
+    pagination = [{"$skip": count * (page - 1)}, {"$limit": count}]
+
+    query = COLLECTION.aggregate(BASE_QUERY + query + pagination)
+
+    full_count_result = COLLECTION.aggregate(
+        BASE_QUERY + query + [{"$group": {"_id": None, "count": {"$sum": 1}}}]
+    )
+
+    full_count = full_count_result.next().get("count", 0)
+
+    if full_count == 0:
+        return jsonify({"match": [], "page_count": 0})
+
+    return jsonify({"match": list(query), "page_count": ceil(full_count / count)})
+
+
+@sales.post("/")
+@bearer_required(Role.STAFF)
 def register_sale():
     body = request.get_json()
 
@@ -38,97 +64,6 @@ def register_sale():
         print(res)
 
     return jsonify({"message": "Success", "inserted_id": str(_id)}), 200
-
-
-def parse_date(date_str):
-    try:
-        # Tentar converter a data no formato ISO 8601 (exemplo: "2023-11-24")
-        return datetime.fromisoformat(date_str)
-    except ValueError:
-        # Se não for nesse formato, tentar como timestamp em milissegundos
-        try:
-            return datetime.fromtimestamp(int(date_str) // 1000)
-        except ValueError:
-            raise ValueError(f"Invalid date format: {date_str}")
-
-
-@sales.get("/filter")
-def filter_sales():
-    body = request.args
-
-    filters: dict[str, Any] = defaultdict(dict)
-    ordering = {}
-
-    if "username" in body:
-        filters["customer.name"] = {"$regex": Regex(body["username"], "i")}
-
-    if "payment_method" in body:
-        filters["payment_method"] = {"$regex": Regex(body["payment_method"], "i")}
-
-    if "status" in body:
-        try:
-            filters["status"] = int(body["status"])
-        except ValueError:
-            return jsonify({"message": "Invalid 'status' value"}), 400
-
-    if "min_price" in body:
-        filters["total"]["$gte"] = float(body["min_price"])
-
-    if "max_price" in body:
-        filters["total"]["$lte"] = float(body["max_price"])
-
-    if "products" in body:
-        filters["items._id"] = {"$in": body["products"].split(",")}
-
-    if "min_date" in body:
-        try:
-            filters["date"]["$gte"] = parse_date(body["min_date"])
-        except ValueError as e:
-            return jsonify({"message": str(e)}), 400
-
-    if "max_date" in body:
-        try:
-            filters["date"]["$lte"] = parse_date(body["max_date"])
-        except ValueError as e:
-            return jsonify({"message": str(e)}), 400
-
-    if "ordering" in body:
-        symbol_mapping = {"+": pymongo.ASCENDING, "-": pymongo.DESCENDING}
-        for ord in body["ordering"].split(","):
-            key = ord[1:]
-            direction = symbol_mapping.get(ord[0])
-
-            if key in ["total", "date", "customer.name"] and direction is not None:
-                ordering[key] = direction
-            else:
-                return jsonify({"message": f"Invalid ordering '{ord}'"}), 400
-
-    if not ordering:
-        ordering["_id"] = pymongo.ASCENDING
-
-    count = int(body.get("count", 20))
-    page = int(body.get("page", 1))
-    pagination = [{"$skip": count * (page - 1)}, {"$limit": count}]
-
-    query = COLLECTION.aggregate(
-        BASE_QUERY + [{"$match": filters}, {"$sort": ordering}] + pagination
-    )
-
-    full_count_result = COLLECTION.aggregate(
-        BASE_QUERY
-        + [
-            {"$match": filters},
-            {"$sort": ordering},
-            {"$group": {"_id": None, "count": {"$sum": 1}}},
-        ]
-    )
-
-    full_count = full_count_result.next().get("count", 0)
-
-    if full_count == 0:
-        return jsonify({"match": [], "page_count": 0})
-
-    return jsonify({"match": list(query), "page_count": ceil(full_count / count)})
 
 
 @sales.get("/report/<id>")

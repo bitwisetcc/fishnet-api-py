@@ -21,7 +21,7 @@ def to_dict(item):
 
 
 @products.get("/")
-def get_species():
+def get_products():
     species = list(collection.find())
     return jsonify([to_dict(f) for f in species]), 200
 

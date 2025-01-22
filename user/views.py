@@ -5,7 +5,7 @@ from bson import ObjectId
 from flask import Blueprint, Response, abort, jsonify, request
 
 from connections import db
-from decorators import bearer_required
+from decorators import Role, bearer_required
 from user.models import parse_filters
 
 COLLECTION = db["users"]
@@ -22,7 +22,7 @@ def to_dict(item) -> dict[str, Any]:
 
 
 @users.get("/")
-@bearer_required("staff")
+@bearer_required(Role.STAFF)
 def get_users():
     try:
         query = parse_filters(request.args)
@@ -50,7 +50,7 @@ def get_users():
 
 
 @users.get("/<id>")
-@bearer_required("staff")
+@bearer_required(Role.STAFF)
 def get_user_by_id(_, id):
     user = COLLECTION.find_one({"_id": ObjectId(id)})
 
@@ -61,7 +61,7 @@ def get_user_by_id(_, id):
 
 
 @users.delete("/<id>")
-@bearer_required("manager")
+@bearer_required(Role.MANAGER)
 def delete_user(_, id):
     transaction = COLLECTION.delete_one({"_id": ObjectId(id)})
 
@@ -71,23 +71,29 @@ def delete_user(_, id):
     return Response(status=204)
 
 
-@users.route("/self")
+@users.get("/self")
 @bearer_required()
 def user_profile(id: ObjectId):
-    match request.method:
-        case "GET":
-            return jsonify(to_dict(COLLECTION.find_one({"_id": id}))), 200
-        case "PUT":
-            body = dict(request.get_json())
-            transaction = COLLECTION.update_one({"_id": id}, {"$set": body})
+    return jsonify(to_dict(COLLECTION.find_one({"_id": id}))), 200
 
-            if not transaction.acknowledged:
-                abort(500, description="Database failed to write data")
 
-            return Response(status=204)
-        case "DELETE":
-            transaction = COLLECTION.delete_one({"_id": id})
-            if not transaction.acknowledged:
-                abort(500, description="Database failed to delete data")
+@users.put("/self")
+@bearer_required()
+def update_profile(id: ObjectId):
+    body = dict(request.get_json())
+    transaction = COLLECTION.update_one({"_id": id}, {"$set": body})
 
-            return Response(status=204)
+    if not transaction.acknowledged:
+        abort(500, description="Database failed to write data")
+
+    return Response(status=204)
+
+
+@users.delete("/self")
+@bearer_required()
+def user_profile(id: ObjectId):
+    transaction = COLLECTION.delete_one({"_id": id})
+    if not transaction.acknowledged:
+        abort(500, description="Database failed to delete data")
+
+    return Response(status=204)
